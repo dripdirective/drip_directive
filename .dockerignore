@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Local data (will be mounted as volumes)
+*.db
+*.sqlite
+*.sqlite3
+chroma_data/
+uploads/user_images/*
+uploads/wardrobe_images/*
+uploads/generated/*
+uploads/tryon_images/*
+
+# Keep README files
+!uploads/README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation (not needed in image)
+docs/
+*.md
+!README.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Testing
+tests/
+test_*.py
+*_test.py
+
+# Frontend (separate container)
+frontend/
+node_modules/
+
+# Scripts (not needed in production image)
+scripts/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/

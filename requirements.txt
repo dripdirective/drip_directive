@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+gunicorn
+sqlalchemy
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+pydantic
+pydantic-settings
+email-validator
+pillow
+aiofiles
+bcrypt
+google-genai
+openai>=1.12.0
+httpx
+chromadb
