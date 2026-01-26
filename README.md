@@ -244,7 +244,7 @@ drip_directive/
 |---------|----------|
 | Port already in use | Use different port: `uvicorn app.main:app --reload --port 8001` |
 | Module not found | Activate venv: `source venv/bin/activate` and reinstall |
-| Database errors | Delete `style_me.db` and restart server |
+| Database errors | Verify `DATABASE_URL` points to Postgres and DB is reachable |
 | Missing API key | Add `OPENAI_API_KEY` or `GOOGLE_API_KEY` to `.env` |
 
 ### Frontend Issues

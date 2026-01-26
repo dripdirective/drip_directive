@@ -199,7 +199,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 # Use environment variable for database URL
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "sqlite:///./style_me.db"  # Fallback for local dev
+    "postgresql://postgres:postgres@localhost:5432/dripdirective"  # Example local dev default
 )
 
 # Handle PostgreSQL URL format from AWS

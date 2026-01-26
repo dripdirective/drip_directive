@@ -139,6 +139,7 @@ class AIService:
     
     def __init__(self):
         self.provider: Optional[AIProvider] = None
+        self._openai_client = None
         self._initialize_provider()
     
     def _initialize_provider(self):
@@ -151,7 +152,9 @@ class AIService:
             self.provider = OpenAIProvider(
                 api_key=settings.OPENAI_API_KEY or "",
                 text_model=settings.LLM_MODEL or "gpt-4o-mini",
-                image_model=getattr(settings, "IMAGE_MODEL", "dall-e-3")
+                image_model=getattr(settings, "IMAGE_MODEL", "dall-e-3"),
+                max_concurrency=getattr(settings, "AI_MAX_CONCURRENT_REQUESTS", 4),
+                timeout_seconds=getattr(settings, "AI_OPENAI_TIMEOUT_SECONDS", 60),
             )
         else:  # default: google
             self.provider = GoogleProvider(
@@ -327,8 +330,14 @@ class AIService:
             if settings.OPENAI_API_KEY:
                 try:
                     import openai
-                    client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-                    response = client.embeddings.create(
+                    if self._openai_client is None:
+                        # Use async client so we don't block the event loop.
+                        self._openai_client = openai.AsyncOpenAI(
+                            api_key=settings.OPENAI_API_KEY,
+                            timeout=float(getattr(settings, "AI_OPENAI_TIMEOUT_SECONDS", 60)),
+                        )
+
+                    response = await self._openai_client.embeddings.create(
                         model="text-embedding-3-small",  # cheaper and faster
                         input=text[:8000]  # limit input length
                     )

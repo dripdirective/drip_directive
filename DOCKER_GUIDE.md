@@ -50,7 +50,6 @@ That's it! 🎉
 │  ├────────────────────────────────────────────────┤    │
 │  │  • uploads/        - User & wardrobe images    │    │
 │  │  • chroma_data/    - Vector database (NEW!)    │    │
-│  │  • style_me.db     - SQLite database           │    │
 │  └────────────────────────────────────────────────┘    │
 │                                                          │
 └─────────────────────────────────────────────────────────┘
@@ -63,7 +62,6 @@ That's it! 🎉
 ```yaml
 volumes:
   - ./uploads:/app/uploads              # Image storage
-  - ./style_me.db:/app/style_me.db      # Database
   - ./chroma_data:/app/chroma_data      # ✨ Vector database (ChromaDB)
 ```
 
@@ -72,7 +70,6 @@ volumes:
 | Volume | Purpose | Persistence |
 |--------|---------|-------------|
 | `uploads/` | User photos & wardrobe | ✅ Critical - Required |
-| `style_me.db` | User accounts & metadata | ✅ Critical - Required |
 | `chroma_data/` | Vector embeddings for AI search | ✅ Critical - Required |
 
 **⚠️ Important**: All volumes are persistent across container restarts. If you delete them, you'll lose your data!
@@ -131,7 +128,7 @@ GOOGLE_API_KEY=...             # Google AI
 
 ```bash
 # Database
-DATABASE_URL=sqlite:///./style_me.db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/dripdirective
 
 # Vector Store
 VECTOR_STORE=chromadb          # chromadb, pgvector, none
@@ -173,14 +170,14 @@ docker-compose restart backend
 ```bash
 # Backup data
 docker-compose down
-tar -czf backup-$(date +%Y%m%d).tar.gz uploads/ chroma_data/ style_me.db
+tar -czf backup-$(date +%Y%m%d).tar.gz uploads/ chroma_data/
 
 # Restore data
 tar -xzf backup-20260109.tar.gz
 
 # Clear all data (DANGEROUS!)
 docker-compose down
-rm -rf uploads/* chroma_data/* style_me.db
+rm -rf uploads/* chroma_data/*
 ```
 
 ### Debugging
@@ -358,13 +355,11 @@ docker exec dripdirective-frontend cat /app/config/api.js
 ```bash
 # 1. Copy existing data
 cp -r uploads/ docker-uploads/
-cp style_me.db docker-style_me.db
 cp -r chroma_data/ docker-chroma_data/
 
 # 2. Update paths in docker-compose.yml
 volumes:
   - ./docker-uploads:/app/uploads
-  - ./docker-style_me.db:/app/style_me.db
   - ./docker-chroma_data:/app/chroma_data
 
 # 3. Start Docker

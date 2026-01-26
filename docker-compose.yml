@@ -14,13 +14,17 @@ services:
     volumes:
       # Persistent data volumes
       - ./uploads:/app/uploads
-      - ./style_me.db:/app/style_me.db
       - ./chroma_data:/app/chroma_data  # Vector database storage
     environment:
       # Override ChromaDB path for Docker
       - CHROMADB_PATH=/app/chroma_data
-      # Ensure database URL is passed through from .env (or defaults if unset)
-      - DATABASE_URL=${DATABASE_URL:-sqlite:///./style_me.db}
+      # Database URL must be set (Postgres-only)
+      - DATABASE_URL=${DATABASE_URL}
+      # Production-ish defaults (override in .env as needed)
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
+      - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120}
+      - AI_MAX_CONCURRENT_REQUESTS=${AI_MAX_CONCURRENT_REQUESTS:-4}
+      - AI_OPENAI_TIMEOUT_SECONDS=${AI_OPENAI_TIMEOUT_SECONDS:-60}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

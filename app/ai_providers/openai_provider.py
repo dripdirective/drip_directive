@@ -4,6 +4,8 @@ Uses: gpt-4o-mini (text + vision), dall-e-3 (image generation)
 """
 import io
 import base64
+import asyncio
+import os
 import httpx
 from typing import Dict, List, Optional
 from PIL import Image
@@ -25,11 +27,16 @@ class OpenAIProvider(AIProvider):
     """OpenAI GPT AI Provider"""
     
     def __init__(self, api_key: str, text_model: str = "gpt-4o-mini", 
-                 image_model: str = "dall-e-3"):
+                 image_model: str = "dall-e-3",
+                 max_concurrency: int = 4,
+                 timeout_seconds: float = 60.0):
         self.api_key = api_key
         self.text_model = text_model
         self.image_model = image_model
+        self.max_concurrency = max(1, int(max_concurrency or 1))
+        self.timeout_seconds = float(timeout_seconds or 60.0)
         self.client = None
+        self._semaphore = asyncio.Semaphore(self.max_concurrency)
         self._initialize()
     
     def _initialize(self):
@@ -42,10 +49,13 @@ class OpenAIProvider(AIProvider):
             return
         
         try:
-            self.client = openai.OpenAI(api_key=self.api_key)
+            # Use the async client so we don't block the event loop.
+            # openai>=1.x provides AsyncOpenAI.
+            self.client = openai.AsyncOpenAI(api_key=self.api_key, timeout=self.timeout_seconds)
             print(f"✓ OpenAI GPT initialized")
             print(f"  Text model: {self.text_model}")
             print(f"  Image model: {self.image_model}")
+            print(f"  Max concurrency: {self.max_concurrency}")
         except Exception as e:
             print(f"⚠️ Failed to initialize OpenAI: {e}")
     
@@ -74,23 +84,24 @@ class OpenAIProvider(AIProvider):
         
         try:
             image_url = self._image_to_base64(image)
-            
-            response = self.client.chat.completions.create(
-                model=self.text_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": image_url, "detail": "low"}
-                            }
-                        ]
-                    }
-                ],
-                max_completion_tokens=2000
-            )
+
+            async with self._semaphore:
+                response = await self.client.chat.completions.create(
+                    model=self.text_model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": image_url, "detail": "low"},
+                                },
+                            ],
+                        }
+                    ],
+                    max_completion_tokens=2000,
+                )
             return {"text": response.choices[0].message.content, "model": self.text_model}
         except Exception as e:
             return {"error": str(e)}
@@ -101,11 +112,12 @@ class OpenAIProvider(AIProvider):
             return ""
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.text_model,
-                messages=[{"role": "user", "content": prompt}],
-                max_completion_tokens=2000
-            )
+            async with self._semaphore:
+                response = await self.client.chat.completions.create(
+                    model=self.text_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_completion_tokens=2000,
+                )
             return response.choices[0].message.content
         except Exception as e:
             print(f"⚠️ OpenAI text generation error: {e}")
@@ -125,12 +137,13 @@ class OpenAIProvider(AIProvider):
                     "type": "image_url",
                     "image_url": {"url": image_url, "detail": "low"}
                 })
-            
-            response = self.client.chat.completions.create(
-                model=self.text_model,
-                messages=[{"role": "user", "content": content}],
-                max_completion_tokens=3000
-            )
+
+            async with self._semaphore:
+                response = await self.client.chat.completions.create(
+                    model=self.text_model,
+                    messages=[{"role": "user", "content": content}],
+                    max_completion_tokens=3000,
+                )
             return {"text": response.choices[0].message.content, "model": self.text_model}
         except Exception as e:
             return {"error": str(e)}
@@ -147,18 +160,22 @@ class OpenAIProvider(AIProvider):
         try:
             # DALL-E 3 doesn't support reference images directly
             # For virtual try-on, we'll use the prompt only
-            response = self.client.images.generate(
-                model=self.image_model,
-                prompt=prompt,
-                size="1024x1024",
-                quality="standard",
-                n=1
-            )
+            async with self._semaphore:
+                response = await self.client.images.generate(
+                    model=self.image_model,
+                    prompt=prompt,
+                    size="1024x1024",
+                    quality="standard",
+                    n=1,
+                )
             
             # Download the generated image
             image_url = response.data[0].url
             
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(
+                timeout=self.timeout_seconds,
+                follow_redirects=True,
+            ) as client:
                 img_response = await client.get(image_url)
                 img_bytes = img_response.content
             

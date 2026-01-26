@@ -52,7 +52,7 @@ zip -r "$ARTIFACT" \
   -x "*/__pycache__/*" "*/*/__pycache__/*" "*/*/*/__pycache__/*" \
   -x "*.pyc" "*.pyo" \
   -x ".DS_Store" "*/.DS_Store" \
-  -x "style_me.db"
+  -x "*.db"
 ```
 
 ---

@@ -23,7 +23,9 @@ class Settings(BaseSettings):
     OAUTH_TOKEN_URL: str = "api/auth/login"
 
     # Database
-    DATABASE_URL: str = "sqlite:///./style_me.db"
+    # Postgres (required). Example:
+    # postgresql://postgres:<password>@localhost:5432/dripdirective
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/dripdirective"
 
     # CORS
     # Comma-separated list of allowed origins, or "*" to allow all (NOT recommended for production).
@@ -67,6 +69,10 @@ class Settings(BaseSettings):
     
     AI_PROCESSING_TIMEOUT: int = 300  # 5 minutes
     MAX_RECOMMENDATION_WARDROBE_ITEMS: int = 20
+
+    # AI concurrency / timeouts (per API worker process)
+    AI_MAX_CONCURRENT_REQUESTS: int = 4  # limits simultaneous OpenAI/Gemini calls per worker
+    AI_OPENAI_TIMEOUT_SECONDS: int = 60  # network timeout for OpenAI API calls
     
     # Vector Store Configuration
     VECTOR_STORE: str = "chromadb"  # Options: "chromadb" (local), "pgvector" (production), "none" (disabled)

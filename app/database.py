@@ -1,7 +1,6 @@
-import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.pool import NullPool, QueuePool
+from sqlalchemy.pool import QueuePool
 
 from app.config import settings
 
@@ -12,28 +11,32 @@ DATABASE_URL = settings.DATABASE_URL
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Configure engine based on database type
+# Postgres-only configuration
+if "postgresql" not in DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL must be a PostgreSQL URL (postgresql://...). "
+        "SQLite is not supported in this deployment."
+    )
+
 connect_args = {}
 engine_config = {
     "pool_pre_ping": True,  # Verify connections before using
 }
 
-if "postgresql" in DATABASE_URL:
-    # PostgreSQL configuration for production
-    engine_config.update({
-        "poolclass": QueuePool,
-        "pool_size": int(os.getenv("DB_POOL_SIZE", "5")),        # Base connections
-        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "10")), # Extra connections under load
-        "pool_timeout": 30,         # Wait time for connection
-        "pool_recycle": 1800,       # Recycle connections every 30 min
-        "echo": False,
-    })
-    print(f"✅ Using PostgreSQL with connection pool (size={engine_config['pool_size']}, max_overflow={engine_config['max_overflow']})")
-elif DATABASE_URL.startswith("sqlite"):
-    # SQLite-specific (local dev)
-    connect_args = {"check_same_thread": False}
-    engine_config["poolclass"] = NullPool
-    print("✅ Using SQLite for local development")
+import os
+
+engine_config.update({
+    "poolclass": QueuePool,
+    "pool_size": int(os.getenv("DB_POOL_SIZE", "5")),        # Base connections
+    "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "10")), # Extra connections under load
+    "pool_timeout": 30,         # Wait time for connection
+    "pool_recycle": 1800,       # Recycle connections every 30 min
+    "echo": False,
+})
+print(
+    f"✅ Using PostgreSQL with connection pool "
+    f"(size={engine_config['pool_size']}, max_overflow={engine_config['max_overflow']})"
+)
 
 # Create engine
 engine = create_engine(
