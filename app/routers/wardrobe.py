@@ -13,6 +13,7 @@ from app.core.wardrobe import (
     get_wardrobe_images,
     delete_wardrobe_item
 )
+from app.core.storage import public_file_url
 from app.core.utils import validate_and_read_image
 
 router = APIRouter()
@@ -62,7 +63,12 @@ async def get_items(
     for item in items:
         images = get_wardrobe_images(db, item.id)
         item_data = WardrobeItemWithImages.model_validate(item)
-        item_data.images = [WardrobeImageResponse.model_validate(img) for img in images]
+        img_models = []
+        for img in images:
+            img_data = WardrobeImageResponse.model_validate(img)
+            img_data.image_path = public_file_url(img_data.image_path)
+            img_models.append(img_data)
+        item_data.images = img_models
         result.append(item_data)
     return result
 
@@ -84,7 +90,12 @@ async def get_item(
     
     images = get_wardrobe_images(db, item.id)
     item_data = WardrobeItemWithImages.model_validate(item)
-    item_data.images = [WardrobeImageResponse.model_validate(img) for img in images]
+    img_models = []
+    for img in images:
+        img_data = WardrobeImageResponse.model_validate(img)
+        img_data.image_path = public_file_url(img_data.image_path)
+        img_models.append(img_data)
+    item_data.images = img_models
     return item_data
 
 

@@ -1,12 +1,13 @@
 import logging
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy import inspect, text
-from app.database import engine, Base
+from sqlalchemy.orm import Session
+from app.database import engine, Base, get_db
 from app.routers import auth, users, images, wardrobe, ai_processing, recommendations
 from app.config import settings
 from app.core.vector_store import get_vector_store
@@ -125,6 +126,39 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+async def health_check(db: Session = Depends(get_db)):
+    """
+    Health check endpoint for AWS ELB/ALB and monitoring.
+    Returns status of API and database connectivity.
+    """
+    health_status = {
+        "status": "healthy",
+        "version": "1.0.0",
+        "environment": settings.ENVIRONMENT,
+    }
+    
+    # Test database connection
+    try:
+        db.execute(text("SELECT 1"))
+        health_status["database"] = "connected"
+    except Exception as e:
+        logger.error(f"❌ Database health check failed: {e}")
+        health_status["status"] = "unhealthy"
+        health_status["database"] = f"error: {str(e)}"
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=health_status
+        )
+    
+    # Test storage (S3 or local)
+    try:
+        if settings.USE_S3:
+            health_status["storage"] = "s3"
+        else:
+            health_status["storage"] = "local"
+    except Exception as e:
+        logger.warning(f"⚠️ Storage check warning: {e}")
+        health_status["storage"] = "unknown"
+    
+    return health_status
 

@@ -12,6 +12,7 @@ from app.core.images import (
     get_user_image_by_id,
     delete_user_image
 )
+from app.core.storage import public_file_url
 from app.core.utils import validate_and_read_image
 from app.core.constants import DEFAULT_USER_IMAGE_TYPE
 
@@ -53,8 +54,10 @@ async def upload_image(
             status_code=status.HTTP_400_BAD_REQUEST if "Invalid" in error else status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error
         )
-    
-    return user_image
+
+    data = UserImageResponse.model_validate(user_image).model_dump()
+    data["image_path"] = public_file_url(data.get("image_path", ""))
+    return data
 
 
 @router.get("/", response_model=List[UserImageResponse])
@@ -63,7 +66,13 @@ async def get_images(
     db: Session = Depends(get_db)
 ):
     """Get all user images"""
-    return get_user_images(db, current_user.id)
+    images = get_user_images(db, current_user.id)
+    result = []
+    for img in images:
+        data = UserImageResponse.model_validate(img).model_dump()
+        data["image_path"] = public_file_url(data.get("image_path", ""))
+        result.append(data)
+    return result
 
 
 @router.get("/{image_id}", response_model=UserImageResponse)
@@ -80,8 +89,10 @@ async def get_image(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Image not found"
         )
-    
-    return image
+
+    data = UserImageResponse.model_validate(image).model_dump()
+    data["image_path"] = public_file_url(data.get("image_path", ""))
+    return data
 
 
 @router.delete("/{image_id}", status_code=status.HTTP_204_NO_CONTENT)

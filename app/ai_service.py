@@ -12,6 +12,7 @@ import asyncio
 import os
 import uuid
 import io
+import httpx
 from typing import Dict, List, Optional
 from datetime import datetime
 from PIL import Image as PILImage
@@ -45,9 +46,82 @@ def compress_image(image: PILImage.Image, max_size: int = 1024) -> PILImage.Imag
 
 def get_image_path(path: str) -> str:
     """Get absolute path for an image"""
+    if isinstance(path, str) and (path.startswith("http://") or path.startswith("https://")):
+        return path
     if os.path.isabs(path):
         return path
     return os.path.join(settings.BASE_DIR, path)
+
+
+def _extract_s3_key_from_url(*, url: str, bucket_name: str, cloudfront_domain: Optional[str]) -> str:
+    """
+    Extract object key from common S3/CloudFront URL formats.
+
+    Supports:
+    - https://<bucket>.s3.<region>.amazonaws.com/<key>
+    - https://s3.<region>.amazonaws.com/<bucket>/<key>
+    - https://<cloudfront-domain>/<key>
+    """
+    if cloudfront_domain and cloudfront_domain in url:
+        key = url.split(f"{cloudfront_domain}/", 1)[-1]
+        return key.lstrip("/")
+
+    if ".amazonaws.com/" in url:
+        remainder = url.split(".amazonaws.com/", 1)[-1].lstrip("/")
+        # Path-style URLs include bucket in the path: /<bucket>/<key>
+        if bucket_name and remainder.startswith(f"{bucket_name}/"):
+            remainder = remainder[len(bucket_name) + 1 :]
+        return remainder
+
+    # Fallback: treat everything after the host as key
+    parts = url.split("/", 3)
+    return parts[3] if len(parts) >= 4 else url
+
+
+async def load_image_from_path_or_url(path_or_url: str) -> Optional[PILImage.Image]:
+    """
+    Load an image from local path (relative/absolute) or from an https URL (S3/CloudFront).
+    Returns a PIL Image or None if unavailable.
+    """
+    if not path_or_url:
+        return None
+
+    # Local file path
+    if not (path_or_url.startswith("http://") or path_or_url.startswith("https://")):
+        abs_path = get_image_path(path_or_url)
+        if not os.path.exists(abs_path):
+            return None
+        return PILImage.open(abs_path)
+
+    # Remote URL (S3/CloudFront)
+    # Prefer boto3 for private buckets when USE_S3=true; fallback to plain HTTP fetch.
+    if settings.USE_S3:
+        try:
+            from app.core.s3_storage import storage as s3_storage
+
+            if getattr(s3_storage, "use_s3", False):
+                key = _extract_s3_key_from_url(
+                    url=path_or_url,
+                    bucket_name=getattr(s3_storage, "bucket_name", ""),
+                    cloudfront_domain=getattr(s3_storage, "cloudfront_domain", None),
+                )
+                obj = s3_storage.s3_client.get_object(
+                    Bucket=s3_storage.bucket_name,
+                    Key=key,
+                )
+                data = obj["Body"].read()
+                return PILImage.open(io.BytesIO(data))
+        except Exception:
+            # Fall back to HTTP GET below
+            pass
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(path_or_url)
+            resp.raise_for_status()
+            return PILImage.open(io.BytesIO(resp.content))
+    except Exception:
+        return None
 
 
 # ============================================
@@ -129,9 +203,8 @@ class AIService:
             # Load and compress images
             images = []
             for image_type, path in image_paths.items():
-                abs_path = get_image_path(path)
-                if os.path.exists(abs_path):
-                    img = PILImage.open(abs_path)
+                img = await load_image_from_path_or_url(path)
+                if img is not None:
                     img = compress_image(img, max_size=1024)
                     images.append(img)
                     print(f"   ✓ Loaded: {image_type}")
@@ -205,11 +278,10 @@ class AIService:
             return self._placeholder_wardrobe_metadata()
         
         try:
-            abs_path = get_image_path(image_path)
-            if not os.path.exists(abs_path):
+            img = await load_image_from_path_or_url(image_path)
+            if img is None:
                 return self._placeholder_wardrobe_metadata()
-            
-            img = PILImage.open(abs_path)
+
             img = compress_image(img, max_size=1024)
             
             print(f"   📤 Sending to {self.provider.name}...")
@@ -416,8 +488,9 @@ class AIService:
         os.makedirs(TRYON_OUTPUT_DIR, exist_ok=True)
         
         try:
-            abs_path = get_image_path(user_image_path)
-            user_image = PILImage.open(abs_path)
+            user_image = await load_image_from_path_or_url(user_image_path)
+            if user_image is None:
+                return {"error": "User image not found", "image_path": None}
             user_image = compress_image(user_image, max_size=1024)
             
             # Build try-on prompt

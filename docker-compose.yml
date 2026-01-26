@@ -19,6 +19,8 @@ services:
     environment:
       # Override ChromaDB path for Docker
       - CHROMADB_PATH=/app/chroma_data
+      # Ensure database URL is passed through from .env (or defaults if unset)
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./style_me.db}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

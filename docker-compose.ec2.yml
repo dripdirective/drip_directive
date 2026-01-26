@@ -1,0 +1,17 @@
+version: "3.8"
+
+# EC2 deployment override:
+# - Runs only the backend
+# - Binds backend to localhost so it is reachable only via SSH/Nginx on the instance
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.ec2.yml up -d --build
+
+services:
+  backend:
+    ports:
+      - "127.0.0.1:8001:8000"
+
+  # Disable frontend on EC2 (this repo's docker-compose.yml defines it).
+  # Services with profiles are not started unless explicitly enabled.
+  frontend:
+    profiles: ["frontend"]

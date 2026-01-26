@@ -59,9 +59,10 @@ async def upload_user_image(
             filename=filename,
             target_filename=new_filename,
         )
-        # Verify file exists
-        if not os.path.exists(resolve_storage_path(relative_path)):
-            return False, ERR_IMAGE_NOT_SAVED, None
+        # Verify file exists (local storage only). For S3, we store a URL.
+        if not (settings.USE_S3 and isinstance(relative_path, str) and relative_path.startswith("http")):
+            if not os.path.exists(resolve_storage_path(relative_path)):
+                return False, ERR_IMAGE_NOT_SAVED, None
     except Exception as e:
         return False, f"Failed to save file: {str(e)}", None
     

@@ -2,9 +2,24 @@
 // Prefer env override so mobile devices on LAN can reach the backend
 // Set EXPO_PUBLIC_API_BASE_URL in your .env (e.g. http://192.168.0.102:8000)
 const isDevelopment = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ||
-  (isDevelopment ? 'http://localhost:8000' : 'https://your-production-api.com');
+
+// Determine API base URL
+const getApiBaseUrl = () => {
+  // 1. Use environment variable if set (highest priority)
+  if (process.env.EXPO_PUBLIC_API_BASE_URL) {
+    return process.env.EXPO_PUBLIC_API_BASE_URL;
+  }
+  
+  // 2. Use production API for production builds
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://api.dripdirective.com';
+  }
+  
+  // 3. Use localhost for development
+  return 'http://localhost:8000';
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export const API_ENDPOINTS = {
   // Auth

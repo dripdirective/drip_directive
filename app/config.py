@@ -73,6 +73,25 @@ class Settings(BaseSettings):
     CHROMADB_PATH: str = "./chroma_data"  # Path for ChromaDB storage (local only)
     CHROMADB_COLLECTION_PREFIX: str = "drip_directive"  # Prefix for ChromaDB collections
     
+    # AWS Configuration
+    USE_S3: bool = False  # Set to True in production to use S3 for file storage
+    S3_BUCKET_NAME: str = "dripdirective-uploads"  # S3 bucket name for uploads
+    AWS_REGION: str = "us-east-1"  # AWS region
+    CLOUDFRONT_DOMAIN: Optional[str] = None  # Optional CloudFront CDN domain (e.g., d1234abcd.cloudfront.net)
+
+    # S3 URL behavior
+    # If your S3 bucket is private (Block Public Access ON), enable this for local testing so
+    # API responses return temporary presigned URLs the frontend can load.
+    # In production you can switch this off and serve via CloudFront (or other CDN) instead.
+    S3_PRESIGN_URLS: bool = False
+    S3_PRESIGN_EXPIRES_SECONDS: int = 3600
+    
+    # Lambda Configuration (optional - for offloading AI processing)
+    USE_LAMBDA_AI: bool = False  # Set to True to offload AI tasks to Lambda
+    LAMBDA_RECOMMENDATIONS_FUNCTION: Optional[str] = None  # Lambda function name for recommendations
+    LAMBDA_TRYON_FUNCTION: Optional[str] = None  # Lambda function name for try-on generation
+    RECOMMENDATIONS_QUEUE_URL: Optional[str] = None  # SQS queue URL for async recommendations
+    
     # Base directory for absolute path resolution
     BASE_DIR: str = str(BASE_DIR)
 

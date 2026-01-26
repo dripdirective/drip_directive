@@ -15,3 +15,6 @@ google-genai
 openai>=1.12.0
 httpx
 chromadb
+# AWS Dependencies
+boto3>=1.26.0
+psycopg2-binary  # PostgreSQL adapter for SQLAlchemy
