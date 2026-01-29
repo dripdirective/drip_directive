@@ -33,7 +33,8 @@ export default function LoginScreen({ navigation }) {
     setLoading(false);
 
     if (result.success) {
-      navigation.replace('Main');
+      // AuthContext sets isAuthenticated=true; AppNavigator will switch to MainTabs.
+      return;
     } else {
       Alert.alert('Login Failed', result.error);
     }
@@ -61,13 +62,17 @@ export default function LoginScreen({ navigation }) {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
             <View style={styles.topNavRow}>
-              <TouchableOpacity
-                style={styles.backPill}
-                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Landing'))}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.backPillText}>← Back</Text>
-              </TouchableOpacity>
+              {navigation.canGoBack() ? (
+                <TouchableOpacity
+                  style={styles.backPill}
+                  onPress={() => navigation.goBack()}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.backPillText}>← Back</Text>
+                </TouchableOpacity>
+              ) : (
+                <View />
+              )}
             </View>
 
             {/* Logo & Title */}

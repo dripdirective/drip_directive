@@ -94,7 +94,8 @@ class UserProfile(Base):
     body_type = Column(SQLEnum(BodyType), nullable=True)
     face_tone = Column(SQLEnum(FaceTone), nullable=True)
     state = Column(String, nullable=True)
-    city = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    occupation = Column(String, nullable=True)
     additional_info = Column(Text, nullable=True)
     # Vector-based recommendation fields
     profile_summary_text = Column(Text, nullable=True)  # Rich AI-generated description

@@ -1,13 +1,14 @@
 {
-  "name": "style-me-frontend",
+  "name": "dripdirective-android-app",
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "expo start --web",
+    "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build": "expo build:web"
+    "export:web": "NODE_ENV=production expo export --platform web",
+    "doctor": "expo doctor"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -20,6 +21,8 @@
     "expo": "^54.0.30",
     "expo-blur": "~15.0.8",
     "expo-document-picker": "~14.0.8",
+    "expo-file-system": "~19.0.21",
+    "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "~17.0.10",
     "expo-linear-gradient": "^15.0.8",
     "expo-linking": "~8.0.11",

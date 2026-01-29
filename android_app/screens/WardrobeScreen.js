@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { wardrobeAPI, aiProcessingAPI } from '../services/api';
 import { API_BASE_URL } from '../config/api';
+import * as ImageManipulator from 'expo-image-manipulator';
 import FlowNavBar from '../components/FlowNavBar';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../theme/colors';
 
@@ -53,7 +54,7 @@ const ItemDetailModal = ({ visible, item, onClose }) => {
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
         <LinearGradient colors={[COLORS.background, COLORS.backgroundLight]} style={StyleSheet.absoluteFill} />
-        
+
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.modalContent}>
             {/* Header */}
@@ -109,20 +110,20 @@ const ItemDetailModal = ({ visible, item, onClose }) => {
                       </View>
                     </View>
                   )}
-                  <DetailRow 
-                    icon="📊" 
-                    label="Formality" 
-                    value={metadata.formality_level ? `${metadata.formality_level}/10` : null} 
+                  <DetailRow
+                    icon="📊"
+                    label="Formality"
+                    value={metadata.formality_level ? `${metadata.formality_level}/10` : null}
                   />
-                  <DetailRow 
-                    icon="🔄" 
-                    label="Versatility" 
-                    value={metadata.versatility_score ? `${metadata.versatility_score}/10` : null} 
+                  <DetailRow
+                    icon="🔄"
+                    label="Versatility"
+                    value={metadata.versatility_score ? `${metadata.versatility_score}/10` : null}
                   />
-                  <DetailRow 
-                    icon="⭐" 
-                    label="Statement Piece" 
-                    value={metadata.statement_piece !== undefined ? (metadata.statement_piece ? 'Yes' : 'No') : null} 
+                  <DetailRow
+                    icon="⭐"
+                    label="Statement Piece"
+                    value={metadata.statement_piece !== undefined ? (metadata.statement_piece ? 'Yes' : 'No') : null}
                   />
                 </View>
 
@@ -264,7 +265,7 @@ const WardrobeItemCard = ({ item, onDelete, onProcess, processing, onViewDetails
   };
 
   const status = getStatusStyle(item.processing_status);
-  
+
   // Prefer AI-detected garment type (e.g., "saree") over the DB enum (which may default to "other")
   const displayNameRaw =
     (metadata && (metadata.garment_type || metadata.garmentType)) ||
@@ -349,7 +350,7 @@ const WardrobeItemCard = ({ item, onDelete, onProcess, processing, onViewDetails
                 ))}
               </View>
             )}
-            
+
             {/* View Full Details Button */}
             <TouchableOpacity
               style={styles.viewDetailsButton}
@@ -408,7 +409,9 @@ export default function WardrobeScreen() {
       const data = await wardrobeAPI.getItems();
       setItems(data || []);
     } catch (error) {
-      console.error('Error loading items:', error);
+      if (error?.response?.status !== 401) {
+        console.error('Error loading items:', error);
+      }
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -438,13 +441,51 @@ export default function WardrobeScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Reverted to fix crash
         allowsMultipleSelection: true,
+        selectionLimit: 0, // 0 means unlimited
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets?.length > 0) {
-        await uploadImages(result.assets);
+        // Fix 413: Resize/Compress images before upload
+        const processedAssets = await Promise.all(
+          result.assets.map(async (asset) => {
+            try {
+              // Skip processing if no width/height info (shouldn't happen with Expo ImagePicker)
+              if (!asset.width || !asset.height) return asset;
+
+              // Constrain max dimension to 1200px to ensure file size is small enough
+              let resizeAction = {};
+              if (asset.width > asset.height) {
+                if (asset.width > 1200) resizeAction = { width: 1200 };
+              } else {
+                if (asset.height > 1200) resizeAction = { height: 1200 };
+              }
+
+              const actions = Object.keys(resizeAction).length > 0 ? [{ resize: resizeAction }] : [];
+
+              // Even if not resizing, we re-compress to ensuring 0.7 quality JPEG
+              const manipulated = await ImageManipulator.manipulateAsync(
+                asset.uri,
+                actions,
+                { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+              );
+
+              return {
+                ...asset,
+                uri: manipulated.uri,
+                width: manipulated.width,
+                height: manipulated.height,
+              };
+            } catch (error) {
+              console.error('Image manipulation failed:', error);
+              return asset; // Fallback to original
+            }
+          })
+        );
+
+        await uploadImages(processedAssets);
       }
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to pick images');
@@ -454,25 +495,36 @@ export default function WardrobeScreen() {
   const uploadImages = async (assets) => {
     try {
       setUploading(true);
-      let successCount = 0;
 
-      for (const asset of assets) {
+      const uploadPromises = assets.map(async (asset) => {
         try {
           const uploaded = asset.file
             ? await wardrobeAPI.uploadImage(asset.file)
             : await wardrobeAPI.uploadImage(asset.uri);
-          if (uploaded?.id) successCount++;
+          return uploaded?.id ? 1 : 0;
         } catch (error) {
           console.error('Upload error:', error);
+          if (error?.response?.status === 401) {
+            // let auth context handle redirect
+            return 0;
+          }
+          return 0;
         }
-      }
+      });
+
+      const results = await Promise.all(uploadPromises);
+      const successCount = results.reduce((a, b) => a + b, 0);
 
       if (successCount > 0) {
         Alert.alert('✨ Success', `${successCount} item(s) added!`);
         loadItems(false);
+      } else if (assets.length > 0) {
+        Alert.alert('Error', 'Failed to upload items');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to upload');
+      if (error?.response?.status !== 401) {
+        Alert.alert('Error', 'Failed to upload');
+      }
     } finally {
       setUploading(false);
     }
@@ -511,7 +563,9 @@ export default function WardrobeScreen() {
 
     } catch (error) {
       setProcessing(false);
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to process');
+      if (error?.response?.status !== 401) {
+        Alert.alert('Error', error.response?.data?.detail || 'Failed to process');
+      }
     }
   };
 
@@ -538,7 +592,9 @@ export default function WardrobeScreen() {
 
     } catch (error) {
       setProcessing(false);
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to process');
+      if (error?.response?.status !== 401) {
+        Alert.alert('Error', error.response?.data?.detail || 'Failed to process');
+      }
     }
   };
 
@@ -553,7 +609,9 @@ export default function WardrobeScreen() {
             await wardrobeAPI.deleteItem(itemId);
             setItems(prev => prev.filter(i => i.id !== itemId));
           } catch (error) {
-            Alert.alert('Error', 'Failed to delete');
+            if (error?.response?.status !== 401) {
+              Alert.alert('Error', 'Failed to delete');
+            }
           }
         },
       },
@@ -572,12 +630,6 @@ export default function WardrobeScreen() {
         <Text style={styles.loadingText}>Loading your wardrobe...</Text>
       </View>
     );
-  }
-
-  // Split items into pairs for 2-per-row layout
-  const itemPairs = [];
-  for (let i = 0; i < items.length; i += 2) {
-    itemPairs.push(items.slice(i, i + 2));
   }
 
   return (
@@ -662,7 +714,7 @@ export default function WardrobeScreen() {
             )}
           </View>
 
-          {/* Items List */}
+          {/* Items List - Single Column */}
           {items.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyEmoji}>👕</Text>
@@ -673,29 +725,15 @@ export default function WardrobeScreen() {
             </View>
           ) : (
             <View style={styles.itemsList}>
-              {/* Column Headers */}
-              <View style={styles.columnHeaders}>
-                <Text style={styles.columnHeader}>Image</Text>
-                <Text style={styles.columnHeader}>Details</Text>
-                <Text style={styles.columnHeader}>Image</Text>
-                <Text style={styles.columnHeader}>Details</Text>
-              </View>
-
-              {/* Item Rows - 2 items per row */}
-              {itemPairs.map((pair, rowIndex) => (
-                <View key={rowIndex} style={styles.itemRow}>
-                  {pair.map((item) => (
-                    <WardrobeItemCard
-                      key={item.id}
-                      item={item}
-                      onDelete={deleteItem}
-                      onProcess={handleProcessItem}
-                      processing={processing}
-                      onViewDetails={handleViewDetails}
-                    />
-                  ))}
-                  {/* Fill empty space if odd number of items */}
-                  {pair.length === 1 && <View style={styles.emptySlot} />}
+              {items.map((item) => (
+                <View key={item.id} style={styles.itemWrapper}>
+                  <WardrobeItemCard
+                    item={item}
+                    onDelete={deleteItem}
+                    onProcess={handleProcessItem}
+                    processing={processing}
+                    onViewDetails={handleViewDetails}
+                  />
                 </View>
               ))}
             </View>
@@ -766,52 +804,28 @@ const styles = StyleSheet.create({
 
   // Items List
   itemsList: {},
-  columnHeaders: {
-    flexDirection: 'row',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    marginBottom: SPACING.sm,
-  },
-  columnHeader: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // Item Row (2 items per row)
-  itemRow: {
-    flexDirection: 'row',
+  itemWrapper: {
     marginBottom: SPACING.md,
-    gap: SPACING.md,
   },
 
   // Item Card (Image + Details)
   itemCard: {
-    flex: 1,
     flexDirection: 'row',
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: COLORS.border,
-    minHeight: 280,
-  },
-  emptySlot: {
-    flex: 1,
+    height: 180, // Fixed height for consistency
   },
 
   // Image Section
   imageSection: {
-    width: '50%',
-    aspectRatio: 0.75,
+    width: 140, // Fixed width for image part
+    height: '100%',
     position: 'relative',
-    minHeight: 280,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
   },
   itemImage: {
     width: '100%',
@@ -834,6 +848,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)', // Fallback
   },
   statusIcon: { fontSize: 14 },
 
@@ -844,14 +859,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   itemName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: COLORS.textPrimary,
     marginBottom: 4,
     textTransform: 'capitalize',
   },
   statusText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     marginBottom: SPACING.sm,
   },
@@ -863,11 +878,11 @@ const styles = StyleSheet.create({
   metadataRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  metadataIcon: { fontSize: 16, marginRight: 8 },
+  metadataIcon: { fontSize: 14, marginRight: 6 },
   metadataValue: {
-    fontSize: 15,
+    fontSize: 13,
     color: COLORS.textSecondary,
     flex: 1,
     textTransform: 'capitalize',
@@ -877,25 +892,25 @@ const styles = StyleSheet.create({
   tagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginTop: SPACING.sm,
+    gap: 4,
+    marginTop: 4,
   },
   tagChip: {
-    backgroundColor: COLORS.primary + '30',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.primary + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.sm,
   },
   tagText: {
-    fontSize: 13,
-    color: COLORS.primaryLight,
+    fontSize: 11,
+    color: COLORS.primary,
     fontWeight: '600',
     textTransform: 'capitalize',
   },
 
   // No Data
   noDataText: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.textMuted,
     fontStyle: 'italic',
     flex: 1,
@@ -904,42 +919,45 @@ const styles = StyleSheet.create({
   // Analyze Button
   analyzeButton: {
     backgroundColor: COLORS.accent + '20',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
     marginTop: SPACING.sm,
+    alignSelf: 'flex-start',
   },
   analyzeButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     color: COLORS.accent,
     fontWeight: '700',
   },
 
   // Delete Button
   deleteButton: {
-    alignSelf: 'flex-end',
+    position: 'absolute',
+    bottom: SPACING.sm,
+    right: SPACING.sm,
     padding: 8,
-    marginTop: SPACING.sm,
   },
-  deleteButtonText: { fontSize: 18 },
+  deleteButtonText: { fontSize: 16 },
 
-  // View Details Button
+  // View Details Button - Make it smaller/abs positioned or inline? 
+  // For now keeping it hidden in card to save space, user can click card? 
+  // Actually the original design had a button. Let's make the Whole Card clickable?
+  // But we have delete button. Let's keep a small link.
   viewDetailsButton: {
-    borderRadius: BORDER_RADIUS.lg,
-    overflow: 'hidden',
-    marginTop: SPACING.lg,
-    ...SHADOWS.sm,
+    marginTop: 8,
+    alignSelf: 'flex-start',
   },
   viewDetailsGradient: {
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: BORDER_RADIUS.md,
   },
   viewDetailsText: {
-    fontSize: 13,
+    fontSize: 11,
     color: COLORS.textPrimary,
-    fontWeight: '800',
+    fontWeight: '700',
   },
 
   // Detail Modal
@@ -1043,7 +1061,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 4,
   },
-  
+
   // Chips
   chipsContainer: {
     flexDirection: 'row',

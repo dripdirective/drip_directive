@@ -6,7 +6,6 @@ import { createURL } from 'expo-linking';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
-import LandingScreen from './screens/LandingScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import UserImagesScreen from './screens/UserImagesScreen';
 import WardrobeScreen from './screens/WardrobeScreen';
@@ -23,8 +22,7 @@ const linking = {
   prefixes: [createURL('/')],
   config: {
     screens: {
-      Landing: '',
-      Login: 'login',
+      Login: '',
       Signup: 'signup',
       Main: {
         screens: {
@@ -96,8 +94,7 @@ function MainTabs() {
 
 function AuthStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Landing">
-      <Stack.Screen name="Landing" component={LandingScreen} />
+    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Signup" component={SignupScreen} />
     </Stack.Navigator>

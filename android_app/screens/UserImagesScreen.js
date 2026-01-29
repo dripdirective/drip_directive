@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { userImagesAPI, aiProcessingAPI, profileAPI } from '../services/api';
 import { API_BASE_URL } from '../config/api';
 import FlowNavBar from '../components/FlowNavBar';
@@ -66,7 +67,7 @@ const getColorHex = (name) => {
 // AI Profile Card Component
 const AIProfileCard = ({ profile }) => {
   if (!profile || !profile.analysis) return null;
-  
+
   const { analysis } = profile;
   const physical = analysis.physical_attributes || {};
   const facial = analysis.facial_features || {};
@@ -84,7 +85,7 @@ const AIProfileCard = ({ profile }) => {
     }
     return [];
   })();
-  
+
   return (
     <View style={styles.profileCard}>
       <LinearGradient
@@ -100,7 +101,7 @@ const AIProfileCard = ({ profile }) => {
             </Text>
           </View>
         </View>
-        
+
         {/* Physical Attributes */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>📊 Physical Attributes</Text>
@@ -119,7 +120,7 @@ const AIProfileCard = ({ profile }) => {
             )}
           </View>
         </View>
-        
+
         {/* Facial Features */}
         {(facial.face_shape || facial.hair_color) && (
           <View style={styles.section}>
@@ -137,7 +138,7 @@ const AIProfileCard = ({ profile }) => {
             </View>
           </View>
         )}
-        
+
         {/* Style Recommendations */}
         {style.recommended_colors && style.recommended_colors.length > 0 && (
           <View style={styles.section}>
@@ -155,7 +156,7 @@ const AIProfileCard = ({ profile }) => {
             </View>
           </View>
         )}
-        
+
         {style.colors_to_avoid && style.colors_to_avoid.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>❌ Colors to Avoid</Text>
@@ -172,7 +173,7 @@ const AIProfileCard = ({ profile }) => {
             </View>
           </View>
         )}
-        
+
         {style.recommended_styles && style.recommended_styles.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>👗 Recommended Styles</Text>
@@ -185,7 +186,7 @@ const AIProfileCard = ({ profile }) => {
             </View>
           </View>
         )}
-        
+
         {styleNotes.length > 0 && (
           <View style={styles.notesBox}>
             <Text style={styles.notesLabel}>💡 Personalized Tips</Text>
@@ -227,12 +228,14 @@ export default function UserImagesScreen() {
         userImagesAPI.getImages(),
         loadAIProfile(),
       ]);
-      
+
       if (imagesData && Array.isArray(imagesData)) {
         setImages(imagesData.sort((a, b) => b.id - a.id));
       }
     } catch (error) {
-      console.error('Error loading data:', error);
+      if (error?.response?.status !== 401) {
+        console.error('Error loading data:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -242,16 +245,24 @@ export default function UserImagesScreen() {
     try {
       const profile = await profileAPI.getProfile();
       if (profile && profile.additional_info) {
-        const info = typeof profile.additional_info === 'string' 
-          ? JSON.parse(profile.additional_info) 
-          : profile.additional_info;
-        if (info.ai_profile_analysis) {
+        let info = profile.additional_info;
+        if (typeof info === 'string') {
+          try {
+            info = JSON.parse(info);
+          } catch {
+            info = null;
+          }
+        }
+        if (info && info.ai_profile_analysis) {
           setAiProfile(info.ai_profile_analysis);
           return info.ai_profile_analysis;
         }
       }
     } catch (error) {
-      console.error('Error loading AI profile:', error);
+      // Profile may not exist yet for new users (404) — don't treat as fatal.
+      if (error?.response?.status !== 404) {
+        console.error('Error loading AI profile:', error);
+      }
     }
     return null;
   };
@@ -272,7 +283,7 @@ export default function UserImagesScreen() {
         input.click();
         return;
       }
-      
+
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission needed', 'Please grant camera roll permissions');
@@ -280,8 +291,9 @@ export default function UserImagesScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Reverted to fix crash
         allowsMultipleSelection: true,
+        selectionLimit: 0, // 0 means unlimited
         quality: 0.8,
       });
 
@@ -296,28 +308,40 @@ export default function UserImagesScreen() {
   const uploadImages = async (assets) => {
     try {
       setUploading(true);
-      let successCount = 0;
-      
-      for (const asset of assets) {
+
+      const uploadPromises = assets.map(async (asset) => {
         try {
-          const uploaded = asset.file 
+          const uploaded = asset.file
             ? await userImagesAPI.uploadImage('user_image', asset.file)
             : await userImagesAPI.uploadImage('user_image', asset.uri);
-          if (uploaded?.id) successCount++;
+          return uploaded?.id ? 1 : 0;
         } catch (error) {
           console.error('Upload error:', error);
+          if (error?.response?.status === 401) {
+            // let auth context handle redirect
+            return 0;
+          }
+          return 0;
         }
-      }
-      
+      });
+
+      const results = await Promise.all(uploadPromises);
+      const successCount = results.reduce((a, b) => a + b, 0);
+
       if (successCount > 0) {
         Alert.alert('✨ Success', `${successCount} photo(s) uploaded! Click "Analyze Photos" to get your AI style profile.`);
         const data = await userImagesAPI.getImages();
         if (data && Array.isArray(data)) {
           setImages(data.sort((a, b) => b.id - a.id));
         }
+      } else if (assets.length > 0) {
+        // Only show error if we tried to upload but got 0 successes
+        Alert.alert('Error', 'Failed to upload images');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to upload images');
+      if (error?.response?.status !== 401) {
+        Alert.alert('Error', 'Failed to upload images');
+      }
     } finally {
       setUploading(false);
     }
@@ -325,17 +349,17 @@ export default function UserImagesScreen() {
 
   const handleAnalyze = async () => {
     const pendingImages = images.filter(img => img.processing_status === 'pending');
-    
+
     if (pendingImages.length === 0) {
       Alert.alert('Info', 'All photos are already analyzed');
       return;
     }
-    
+
     try {
       setProcessing(true);
       await aiProcessingAPI.processUserImages();
       Alert.alert('🤖 Analyzing', 'AI is analyzing your photos. This may take a moment...');
-      
+
       const checkStatus = setInterval(async () => {
         const data = await userImagesAPI.getImages();
         const allCompleted = data.every(img => img.processing_status === 'completed');
@@ -347,16 +371,18 @@ export default function UserImagesScreen() {
           Alert.alert('✅ Complete', 'Your AI style profile is ready!');
         }
       }, 2000);
-      
+
       setTimeout(() => {
         clearInterval(checkStatus);
         setProcessing(false);
         loadData();
       }, 60000);
-      
+
     } catch (error) {
       setProcessing(false);
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to analyze');
+      if (error?.response?.status !== 401) {
+        Alert.alert('Error', error.response?.data?.detail || 'Failed to analyze');
+      }
     }
   };
 
@@ -371,7 +397,9 @@ export default function UserImagesScreen() {
             await userImagesAPI.deleteImage(imageId);
             setImages(prev => prev.filter(img => img.id !== imageId));
           } catch (error) {
-            Alert.alert('Error', 'Failed to delete');
+            if (error?.response?.status !== 401) {
+              Alert.alert('Error', 'Failed to delete');
+            }
           }
         },
       },
@@ -403,7 +431,7 @@ export default function UserImagesScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient colors={[COLORS.background, COLORS.backgroundLight]} style={StyleSheet.absoluteFill} />
-      
+
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
           {/* Header */}
@@ -440,7 +468,7 @@ export default function UserImagesScreen() {
                 <Text style={styles.stepSubtitle}>Add clear, well-lit photos of yourself</Text>
               </View>
             </View>
-            
+
             <TouchableOpacity
               style={[styles.uploadButton, uploading && styles.buttonDisabled]}
               onPress={pickImages}
@@ -475,10 +503,10 @@ export default function UserImagesScreen() {
                   return (
                     <View key={item.id} style={styles.photoCard}>
                       <Image
-                        source={{ 
-                          uri: item.image_path.startsWith('http') 
-                            ? item.image_path 
-                            : `${API_BASE_URL}/${item.image_path}` 
+                        source={{
+                          uri: item.image_path.startsWith('http')
+                            ? item.image_path
+                            : `${API_BASE_URL}/${item.image_path}`
                         }}
                         style={styles.photoImage}
                         resizeMode="cover"
@@ -511,14 +539,14 @@ export default function UserImagesScreen() {
                 <View>
                   <Text style={styles.stepTitle}>Analyze with AI</Text>
                   <Text style={styles.stepSubtitle}>
-                    {pendingCount > 0 
+                    {pendingCount > 0
                       ? `${pendingCount} photo(s) ready for analysis`
                       : 'All photos analyzed!'
                     }
                   </Text>
                 </View>
               </View>
-              
+
               {pendingCount > 0 && (
                 <TouchableOpacity
                   style={[styles.analyzeButton, processing && styles.buttonDisabled]}
@@ -558,7 +586,7 @@ export default function UserImagesScreen() {
                   <Text style={styles.stepSubtitle}>Personalized analysis complete!</Text>
                 </View>
               </View>
-              
+
               <AIProfileCard profile={aiProfile} />
             </View>
           )}
@@ -602,13 +630,13 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: SPACING.lg, color: COLORS.textSecondary, fontSize: 16 },
   content: { padding: SPACING.lg, paddingBottom: SPACING.xxxl },
-  
+
   // Header
   header: { marginBottom: SPACING.lg, paddingTop: SPACING.md },
   title: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary, marginBottom: SPACING.xs },
   subtitle: { fontSize: 14, color: COLORS.textSecondary },
   subtitleHint: { fontSize: 12, color: COLORS.textMuted, marginTop: 4 },
-  
+
   // Stats Row
   statsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xl },
   statCard: {
@@ -622,7 +650,7 @@ const styles = StyleSheet.create({
   },
   statNumber: { fontSize: 24, fontWeight: '800', color: COLORS.textPrimary },
   statLabel: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
-  
+
   // Step Card
   stepCard: {
     backgroundColor: COLORS.surface,
@@ -646,19 +674,19 @@ const styles = StyleSheet.create({
   stepNumberText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
   stepTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
   stepSubtitle: { fontSize: 13, color: COLORS.textMuted, marginTop: 2 },
-  
+
   // Upload Button
   uploadButton: { borderRadius: BORDER_RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },
   buttonDisabled: { opacity: 0.6 },
   uploadButtonGradient: { paddingVertical: SPACING.lg, alignItems: 'center' },
   uploadButtonText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
   loadingRow: { flexDirection: 'row', alignItems: 'center' },
-  
+
   // Analyze Button
   analyzeButton: { borderRadius: BORDER_RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },
   analyzeButtonGradient: { paddingVertical: SPACING.lg, alignItems: 'center' },
   analyzeButtonText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
-  
+
   // Photos Section
   photosSection: { marginBottom: SPACING.lg },
   sectionLabel: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: SPACING.md },
@@ -696,7 +724,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deleteBtnText: { color: COLORS.textPrimary, fontSize: 12, fontWeight: '700' },
-  
+
   // AI Profile Card
   profileCard: { marginTop: SPACING.md, borderRadius: BORDER_RADIUS.lg, overflow: 'hidden' },
   profileCardGradient: { padding: SPACING.lg },
@@ -704,10 +732,10 @@ const styles = StyleSheet.create({
   profileEmoji: { fontSize: 36, marginRight: SPACING.md },
   profileTitle: { fontSize: 20, fontWeight: '700', color: COLORS.textPrimary },
   profileSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
-  
+
   section: { marginBottom: SPACING.lg },
   sectionTitle: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary, marginBottom: SPACING.sm },
-  
+
   attributeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   attributeChip: {
     flexDirection: 'row',
@@ -722,7 +750,7 @@ const styles = StyleSheet.create({
   attributeIcon: { fontSize: 16, marginRight: SPACING.sm },
   attributeLabel: { fontSize: 10, color: COLORS.textMuted },
   attributeValue: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary, textTransform: 'capitalize' },
-  
+
   colorTags: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs },
   colorTag: {
     backgroundColor: COLORS.success + '30',
@@ -743,7 +771,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  
+
   notesBox: {
     backgroundColor: COLORS.surface,
     padding: SPACING.md,
@@ -753,7 +781,7 @@ const styles = StyleSheet.create({
   },
   notesLabel: { fontSize: 13, fontWeight: '600', color: COLORS.tertiary, marginBottom: SPACING.xs },
   notesText: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 20 },
-  
+
   // Empty State
   emptyState: {
     backgroundColor: COLORS.surface,

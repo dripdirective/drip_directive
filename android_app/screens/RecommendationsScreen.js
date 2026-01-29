@@ -11,6 +11,8 @@ import {
   Image,
   Platform,
   Animated,
+  useWindowDimensions,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { recommendationsAPI, wardrobeAPI } from '../services/api';
@@ -112,6 +114,86 @@ const SidebarItem = ({ recommendation, isSelected, onSelect }) => {
         </View>
       </View>
     </TouchableOpacity>
+  );
+};
+
+// Mobile drawer (ChatGPT-style sidebar)
+const MobileDrawer = ({
+  visible,
+  onClose,
+  recommendations,
+  selectedId,
+  onSelect,
+  onNewRequest,
+}) => {
+  const slideAnim = useRef(new Animated.Value(-320)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, damping: 22, stiffness: 160 }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: -320, duration: 180, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <View style={styles.drawerOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1}>
+          <Animated.View style={[styles.drawerBackdrop, { opacity: fadeAnim }]} />
+        </TouchableOpacity>
+
+        <Animated.View style={[styles.drawerPanel, { transform: [{ translateX: slideAnim }] }]}>
+          <View style={styles.drawerHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.drawerTitle}>✨ Style AI</Text>
+              <Text style={styles.drawerSubtitle}>{recommendations.length} sessions</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.drawerClose} activeOpacity={0.85}>
+              <Text style={styles.drawerCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.drawerNewButton} onPress={onNewRequest} activeOpacity={0.9}>
+            <LinearGradient
+              colors={COLORS.gradients.primary}
+              style={styles.drawerNewButtonGrad}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Text style={styles.drawerNewButtonText}>＋ New Request</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <ScrollView style={styles.drawerList} showsVerticalScrollIndicator={false}>
+            {recommendations.length === 0 ? (
+              <View style={styles.emptyHistory}>
+                <Text style={styles.emptyHistoryIcon}>📭</Text>
+                <Text style={styles.emptyHistoryText}>No history yet</Text>
+              </View>
+            ) : (
+              recommendations.map((rec) => (
+                <SidebarItem
+                  key={rec.id}
+                  recommendation={rec}
+                  isSelected={selectedId === rec.id}
+                  onSelect={() => onSelect(rec)}
+                />
+              ))
+            )}
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
   );
 };
 
@@ -308,6 +390,7 @@ const GeneratingView = ({ status, message, progress }) => {
 };
 
 export default function RecommendationsScreen() {
+  const { width: windowWidth } = useWindowDimensions();
   const [recommendations, setRecommendations] = useState([]);
   const [wardrobeItems, setWardrobeItems] = useState([]);
   const [selectedRec, setSelectedRec] = useState(null);
@@ -318,9 +401,18 @@ export default function RecommendationsScreen() {
   const [query, setQuery] = useState('');
   const [loadingTryOn, setLoadingTryOn] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
+  const didInitRef = useRef(false);
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  // On mobile: default to New Request on first load (ChatGPT-like)
+  useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    setShowNewForm(true);
   }, []);
 
   const loadData = async () => {
@@ -470,6 +562,7 @@ export default function RecommendationsScreen() {
     setSelectedRec(rec);
     setSelectedOutfitIndex(0);
     setShowNewForm(false);
+    setShowDrawer(false);
   };
 
   if (loading) {
@@ -483,57 +576,98 @@ export default function RecommendationsScreen() {
   }
 
   const processedCount = wardrobeItems.filter(item => item.processing_status === 'completed').length;
+  const isMobileLayout = Platform.OS !== 'web' || windowWidth < 820;
 
   return (
     <View style={styles.container}>
       <LinearGradient colors={[COLORS.background, COLORS.backgroundLight]} style={StyleSheet.absoluteFill} />
-      
-      <View style={styles.mainLayout}>
-        {/* Left Sidebar */}
-        <View style={styles.sidebar}>
-          {/* Sidebar Header */}
-          <View style={styles.sidebarHeader}>
-            <Text style={styles.sidebarTitle}>✨ Style AI</Text>
-            <Text style={styles.sidebarSubtitle}>{recommendations.length} sessions</Text>
-          </View>
-          
-          {/* New Button */}
-          <TouchableOpacity
-            style={styles.newButton}
-            onPress={() => setShowNewForm(true)}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={COLORS.gradients.primary}
-              style={styles.newButtonGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Text style={styles.newButtonText}>+ New Request</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          
-          {/* History List */}
-          <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
-            {recommendations.length === 0 ? (
-              <View style={styles.emptyHistory}>
-                <Text style={styles.emptyHistoryIcon}>📭</Text>
-                <Text style={styles.emptyHistoryText}>No history yet</Text>
+
+      <View style={[styles.mainLayout, isMobileLayout ? styles.mainLayoutMobile : styles.mainLayoutDesktop]}>
+        {isMobileLayout ? (
+          <>
+            {/* Mobile Header */}
+            <View style={styles.mobileHeader}>
+              <TouchableOpacity
+                style={styles.menuButton}
+                onPress={() => setShowDrawer(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.menuButtonText}>☰</Text>
+              </TouchableOpacity>
+
+              <View style={{ flex: 1 }}>
+                <Text style={styles.mobileTitle}>Style AI</Text>
+                <Text style={styles.mobileSubtitle}>Ask for outfits from your wardrobe</Text>
               </View>
-            ) : (
-              recommendations.map((rec) => (
-                <SidebarItem
-                  key={rec.id}
-                  recommendation={rec}
-                  isSelected={selectedRec?.id === rec.id && !showNewForm}
-                  onSelect={handleSelectRec}
-                />
-              ))
-            )}
-          </ScrollView>
-        </View>
-        
-        {/* Right Content Area */}
+
+              <TouchableOpacity style={styles.newRequestPill} onPress={() => setShowNewForm(true)} activeOpacity={0.9}>
+                <LinearGradient
+                  colors={COLORS.gradients.primary}
+                  style={styles.newRequestPillGrad}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Text style={styles.newRequestPillText}>＋ New</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+
+            <MobileDrawer
+              visible={showDrawer}
+              onClose={() => setShowDrawer(false)}
+              recommendations={recommendations}
+              selectedId={selectedRec?.id}
+              onSelect={handleSelectRec}
+              onNewRequest={() => {
+                setShowNewForm(true);
+                setShowDrawer(false);
+              }}
+            />
+          </>
+        ) : (
+          /* Desktop Sidebar */
+          <View style={styles.sidebar}>
+            <View style={styles.sidebarHeader}>
+              <Text style={styles.sidebarTitle}>✨ Style AI</Text>
+              <Text style={styles.sidebarSubtitle}>{recommendations.length} sessions</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.newButton}
+              onPress={() => setShowNewForm(true)}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={COLORS.gradients.primary}
+                style={styles.newButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.newButtonText}>+ New Request</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
+              {recommendations.length === 0 ? (
+                <View style={styles.emptyHistory}>
+                  <Text style={styles.emptyHistoryIcon}>📭</Text>
+                  <Text style={styles.emptyHistoryText}>No history yet</Text>
+                </View>
+              ) : (
+                recommendations.map((rec) => (
+                  <SidebarItem
+                    key={rec.id}
+                    recommendation={rec}
+                    isSelected={selectedRec?.id === rec.id && !showNewForm}
+                    onSelect={handleSelectRec}
+                  />
+                ))
+              )}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Main Content */}
         <View style={styles.contentArea}>
           {/* Generating State */}
           {generating && generatingStatus && (
@@ -708,8 +842,76 @@ const styles = StyleSheet.create({
   // Main Layout
   mainLayout: {
     flex: 1,
+  },
+  mainLayoutMobile: {
+    flexDirection: 'column',
+  },
+  mainLayoutDesktop: {
     flexDirection: 'row',
   },
+
+  // Mobile header / history
+  mobileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+    gap: SPACING.md,
+  },
+  mobileTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
+  mobileSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+
+  menuButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuButtonText: { fontSize: 18, color: COLORS.textPrimary, fontWeight: '900' },
+
+  newRequestPill: { borderRadius: BORDER_RADIUS.full, overflow: 'hidden', ...SHADOWS.md },
+  newRequestPillGrad: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: BORDER_RADIUS.full },
+  newRequestPillText: { color: COLORS.textPrimary, fontWeight: '900', fontSize: 13 },
+
+  // Drawer
+  drawerOverlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'row' },
+  drawerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  drawerPanel: {
+    width: 320,
+    height: '100%',
+    backgroundColor: COLORS.background,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+    paddingTop: SPACING.xl,
+  },
+  drawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  drawerTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
+  drawerSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  drawerClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerCloseText: { color: COLORS.textPrimary, fontWeight: '900', fontSize: 16 },
+  drawerNewButton: { marginHorizontal: SPACING.lg, marginBottom: SPACING.md, borderRadius: BORDER_RADIUS.lg, overflow: 'hidden' },
+  drawerNewButtonGrad: { paddingVertical: SPACING.md, alignItems: 'center' },
+  drawerNewButtonText: { color: COLORS.textPrimary, fontWeight: '900', fontSize: 14 },
+  drawerList: { flex: 1 },
   
   // Sidebar
   sidebar: {

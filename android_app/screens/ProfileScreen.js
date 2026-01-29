@@ -628,14 +628,14 @@ export default function ProfileScreen() {
             <TouchableOpacity
               style={[
                 styles.saveButton,
-                (saving || (!isDirty && lastSavedAt)) && styles.buttonDisabled
+                (saving || (!isDirty && !!lastSavedAt)) && styles.buttonDisabled
               ]}
               onPress={handleSave}
-              disabled={saving || (!isDirty && lastSavedAt)}
+              disabled={!!saving || (!isDirty && !!lastSavedAt)}
               activeOpacity={0.8}
             >
               <LinearGradient
-                colors={(saving || (!isDirty && lastSavedAt)) ? [COLORS.surfaceLight, COLORS.surface] : COLORS.gradients.primary}
+                colors={(saving || (!isDirty && !!lastSavedAt)) ? [COLORS.surfaceLight, COLORS.surface] : COLORS.gradients.primary}
                 style={styles.saveButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}

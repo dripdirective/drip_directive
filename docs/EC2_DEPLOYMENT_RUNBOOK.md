@@ -336,3 +336,44 @@ Goal: keep API public but protect `/docs`, `/redoc`, `/openapi.json`.
 Recommended approach: Nginx basic auth (password prompt) for docs routes.
 
 ---
+
+## 14) Troubleshooting
+
+### 14.1) SSH Access Timeout
+If `ssh` hangs or times out:
+1.  Go to **AWS Console** > **EC2** > **Security Groups**.
+2.  Find the group attached to your instance (e.g., `launch-wizard-1`).
+3.  Edit **Inbound Rules**.
+4.  Ensure there is a rule for **Type: SSH (22)**.
+5.  **Important**: If your IP changed (e.g., wifi switch), update the **Source** to **My IP**.
+
+### 14.2) 413 Request Entity Too Large (Upload Error)
+If uploads fail with `413` status despite client-side resizing, increase the Nginx limit on the server.
+
+1.  SSH into the server:
+    ```bash
+    ssh -i "drip_ec2.pem" ubuntu@ec2-13-234-202-219.ap-south-1.compute.amazonaws.com
+    ```
+2.  Edit the Nginx config:
+    ```bash
+    sudo nano /etc/nginx/sites-available/dripdirective-api
+    ```
+3.  Add `client_max_body_size 50M;` inside the `server` or `location` block:
+    ```nginx
+    server {
+        listen 80;
+        server_name api.dripdirective.com;
+        
+        # INCREASE UPLOAD LIMIT HERE
+        client_max_body_size 50M;
+
+        location / {
+            # ... proxy settings ...
+        }
+    }
+    ```
+4.  Test and Reload Nginx:
+    ```bash
+    sudo nginx -t
+    sudo systemctl reload nginx
+    ```

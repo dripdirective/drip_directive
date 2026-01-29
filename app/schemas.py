@@ -29,7 +29,8 @@ class UserProfileBase(BaseModel):
     body_type: Optional[BodyType] = None
     face_tone: Optional[FaceTone] = None
     state: Optional[str] = None
-    city: Optional[str] = None
+    country: Optional[str] = None
+    occupation: Optional[str] = None
     additional_info: Optional[str] = None
 
 

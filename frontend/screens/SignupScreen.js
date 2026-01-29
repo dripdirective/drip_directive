@@ -70,6 +70,16 @@ export default function SignupScreen({ navigation }) {
       >
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
+            <View style={styles.topNavRow}>
+              <TouchableOpacity
+                style={styles.backPill}
+                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Landing'))}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.backPillText}>← Back</Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.logoContainer}>
@@ -208,6 +218,24 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING.xl,
+  },
+  topNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    marginBottom: SPACING.lg,
+  },
+  backPill: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  backPillText: {
+    color: COLORS.textSecondary,
+    fontWeight: '800',
+    fontSize: 13,
   },
   
   // Decorative Elements
