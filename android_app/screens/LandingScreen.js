@@ -12,6 +12,7 @@ import {
   Modal,
   Dimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { FontAwesome, MaterialCommunityIcons, Ionicons, Feather } from '@expo/vector-icons';
@@ -99,18 +100,18 @@ const CustomModal = ({ visible, onClose, title, children }) => {
             <BlurView intensity={20} style={StyleSheet.absoluteFill} tint="dark" />
           </Animated.View>
         </TouchableOpacity>
-        
+
         <Animated.View style={[
-          styles.modalContainer, 
+          styles.modalContainer,
           { transform: [{ translateY: slideAnim }] }
         ]}>
           {/* Glassmorphic Background */}
           {Platform.OS === 'web' ? (
-             <LinearGradient colors={[COLORS.surface, COLORS.background]} style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={[COLORS.surface, COLORS.background]} style={StyleSheet.absoluteFill} />
           ) : (
             <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
           )}
-          
+
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{title}</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -145,7 +146,7 @@ const AboutModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="target" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>How it works</Text>
-      
+
       {[
         { num: 1, title: 'Build your profile', desc: 'Tell us your body type, skin tone, location, and style preferences.' },
         { num: 2, title: 'Upload & analyze photos', desc: 'Upload a few photos and get an AI style profile with color recommendations.' },
@@ -207,7 +208,7 @@ const ContactModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="email-outline" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>Get in touch</Text>
-      
+
       <TouchableOpacity style={styles.contactCard} onPress={() => openLink('mailto:dripdirectiveai@gmail.com')} activeOpacity={0.85}>
         <View style={styles.contactIconWrap}>
           <MaterialCommunityIcons name="email" size={24} color={COLORS.primary} />
@@ -225,7 +226,7 @@ const ContactModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="share-variant-outline" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>Follow us</Text>
-      
+
       <TouchableOpacity style={styles.contactCard} onPress={() => openLink('https://www.instagram.com/dripdirectiveai')} activeOpacity={0.85}>
         <View style={[styles.contactIconWrap, { backgroundColor: '#E1306C15', borderColor: '#E1306C30' }]}>
           <FontAwesome name="instagram" size={24} color="#E1306C" />
@@ -254,12 +255,12 @@ const ContactModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="account-group-outline" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>Founders</Text>
-      
+
       <View style={styles.founderRow}>
         <FounderAvatar name="Tasnim Iram" />
         <View style={{ flex: 1 }}>
           <Text style={styles.founderName}>Tasnim Iram</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.linkedInBtn}
             onPress={() => openLink('https://www.linkedin.com/in/tasnim-iram-55457822/')}
           >
@@ -273,7 +274,7 @@ const ContactModal = ({ visible, onClose }) => (
         <FounderAvatar name="Suvom Shaw" />
         <View style={{ flex: 1 }}>
           <Text style={styles.founderName}>Suvom Shaw</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.linkedInBtn}
             onPress={() => openLink('https://www.linkedin.com/in/suvomshaw/')}
           >
@@ -287,6 +288,7 @@ const ContactModal = ({ visible, onClose }) => (
 );
 
 export default function LandingScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [showAbout, setShowAbout] = useState(false);
   const [showContact, setShowContact] = useState(false);
 
@@ -365,38 +367,10 @@ export default function LandingScreen({ navigation }) {
       <ContactModal visible={showContact} onClose={() => setShowContact(false)} />
 
       <Animated.View style={[styles.wrapper, { opacity: fadeAnim }]}>
-        {/* Top navigation */}
-        <View style={styles.topNav}>
-          <TouchableOpacity 
-            style={styles.navBtn} 
-            onPress={() => setShowAbout(true)} 
-            activeOpacity={0.85}
-          >
-            <LinearGradient 
-              colors={['#2563EB', '#1D4ED8']} 
-              style={styles.navBtnGrad}
-            >
-              <MaterialCommunityIcons name="book-open-page-variant" size={18} color="#FFFFFF" />
-              <Text style={styles.navBtnText}>About Us</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.navBtn} 
-            onPress={() => setShowContact(true)} 
-            activeOpacity={0.85}
-          >
-            <LinearGradient 
-              colors={['#22C55E', '#16A34A']} 
-              style={styles.navBtnGrad}
-            >
-              <MaterialCommunityIcons name="card-account-mail" size={18} color="#FFFFFF" />
-              <Text style={styles.navBtnText}>Contact</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top + SPACING.md, SPACING.xxl) }]}
+        >
           {/* Hero Section */}
           <View style={styles.hero}>
             <Animated.View style={[styles.blob1, { transform: [{ translateY: blob1Y }, { translateX: blob1X }] }]} />
@@ -422,9 +396,10 @@ export default function LandingScreen({ navigation }) {
               </Animated.View>
 
               <Text style={styles.heroDesc}>
-                Discover personalized outfit ideas from your own wardrobe. Upload your photos, add your clothes, and let AI curate looks that match your vibe.
+                Personalized outfits from your closet. Upload photos, add clothes, and let AI curate your perfect look.
               </Text>
 
+              {/* 
               <Animated.View style={{ transform: [{ scale: pulseAnim }], width: '100%', maxWidth: 320, alignItems: 'center' }}>
                 <TouchableOpacity style={styles.ctaButton} onPress={() => navigation.navigate('Login')} activeOpacity={0.85}>
                   <LinearGradient colors={['#25D366', '#128C7E']} style={styles.ctaGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
@@ -432,6 +407,55 @@ export default function LandingScreen({ navigation }) {
                   </LinearGradient>
                 </TouchableOpacity>
               </Animated.View>
+              */}
+
+              <TouchableOpacity style={styles.primaryCta} onPress={() => navigation.navigate('PhotoUpload')} activeOpacity={0.9}>
+                <LinearGradient colors={['#6366f1', '#4338ca']} style={styles.primaryGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                  <View style={styles.ctaMainRow}>
+                    <Text style={styles.primaryCtaText}>Start Profile Setup</Text>
+                    <View style={styles.timeBadge}>
+                      <MaterialCommunityIcons name="clock-fast" size={14} color="#FFF" />
+                      <Text style={styles.timeBadgeText}>3 min</Text>
+                    </View>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <View style={styles.trustPointsContainer}>
+                <View style={styles.trustList}>
+                  <View style={styles.trustItem}>
+                    <MaterialCommunityIcons name="lightning-bolt" size={20} color="#FBBF24" />
+                    <Text style={styles.trustText}>Understand your body and style</Text>
+                  </View>
+                  <View style={styles.trustItem}>
+                    <MaterialCommunityIcons name="human-handsdown" size={20} color="#60A5FA" />
+                    <Text style={styles.trustText}>No Mannequin required</Text>
+                  </View>
+                  <View style={styles.trustItem}>
+                    <MaterialCommunityIcons name="shield-check" size={20} color="#34D399" />
+                    <Text style={styles.trustText}>All data is encrypted</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.privacyContainer}>
+                <MaterialCommunityIcons name="shield-check-outline" size={16} color={COLORS.success} />
+                <Text style={styles.privacyNote}>
+                  Your privacy is our priority, <Text style={{ fontWeight: '800' }}>you control your data</Text>
+                </Text>
+              </View>
+
+              <View style={styles.secondaryActions}>
+                <TouchableOpacity style={styles.secActionBtn} onPress={() => setShowAbout(true)}>
+                  <MaterialCommunityIcons name="information-outline" size={16} color={COLORS.textMuted} />
+                  <Text style={styles.secActionText}>About Us</Text>
+                </TouchableOpacity>
+                <View style={styles.secActionDivider} />
+                <TouchableOpacity style={styles.secActionBtn} onPress={() => setShowContact(true)}>
+                  <MaterialCommunityIcons name="message-outline" size={16} color={COLORS.textMuted} />
+                  <Text style={styles.secActionText}>Contact</Text>
+                </TouchableOpacity>
+              </View>
 
               <View style={styles.appStoreRow}>
                 <View style={styles.appStoreBadge}>
@@ -494,29 +518,8 @@ const styles = StyleSheet.create({
   wrapper: { flex: 1 },
 
   topNav: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    padding: SPACING.lg,
-    paddingBottom: SPACING.sm,
-    justifyContent: 'flex-end',
-    zIndex: 100,
+    display: 'none', // Removed from layout
   },
-  navBtn: {
-    borderRadius: BORDER_RADIUS.full,
-    ...SHADOWS.md,
-    backgroundColor: 'transparent',
-  },
-  navBtnGrad: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
-    borderRadius: BORDER_RADIUS.full,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-  },
-  navBtnText: { color: '#FFFFFF', fontWeight: '900', fontSize: 13, letterSpacing: 0.2 },
 
   content: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxxl },
 
@@ -561,7 +564,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
   logoGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  logoImage: { width: 88, height: 88 },
+  logoImage: { width: 88, height: 88, borderRadius: 20 },
 
   mainTitle: {
     fontSize: 44,
@@ -606,7 +609,102 @@ const styles = StyleSheet.create({
   ctaGrad: { paddingVertical: SPACING.lg, alignItems: 'center' },
   ctaText: { color: COLORS.textPrimary, fontSize: 17, fontWeight: '900', letterSpacing: 0.4 },
 
-  appStoreRow: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
+  primaryCta: {
+    borderRadius: BORDER_RADIUS.xl,
+    overflow: 'hidden',
+    ...SHADOWS.lg,
+    width: '100%',
+    maxWidth: 360,
+    marginBottom: SPACING.md,
+  },
+  primaryGrad: { paddingVertical: SPACING.lg, paddingHorizontal: SPACING.xl },
+  ctaMainRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  primaryCtaText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginRight: 4,
+  },
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  timeBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
+
+  trustPointsContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+    marginTop: SPACING.md,
+  },
+  trustList: {
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  trustItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  trustText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  privacyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.success + '10',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.full,
+    marginBottom: SPACING.xl,
+    marginTop: SPACING.md, // Add gap on top
+  },
+  privacyNote: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+
+  secondaryActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.lg,
+    marginBottom: SPACING.xl,
+    paddingVertical: 4,
+  },
+  secActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  secActionText: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  secActionDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: COLORS.border,
+  },
+
+  appStoreRow: {
+    flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md
+  },
   appStoreBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -734,7 +832,7 @@ const styles = StyleSheet.create({
   },
   modalSectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary, marginBottom: SPACING.sm },
   modalText: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 22, textAlign: 'center' },
-  
+
   bulletRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
@@ -816,7 +914,7 @@ const styles = StyleSheet.create({
   avatarGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
   founderName: { fontSize: 16, fontWeight: '900', color: COLORS.textPrimary, marginBottom: 4 },
-  
+
   linkedInBtn: {
     flexDirection: 'row',
     alignItems: 'center',

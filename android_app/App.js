@@ -4,12 +4,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createURL } from 'expo-linking';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import LandingScreen from './screens/LandingScreen';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import UserImagesScreen from './screens/UserImagesScreen';
 import WardrobeScreen from './screens/WardrobeScreen';
 import RecommendationsScreen from './screens/RecommendationsScreen';
+import PhotoUploadScreen from './screens/PhotoUploadScreen';
 
 import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { COLORS } from './theme/colors';
@@ -24,6 +26,7 @@ const linking = {
     screens: {
       Login: '',
       Signup: 'signup',
+      PhotoUpload: 'photo-upload',
       Main: {
         screens: {
           Profile: 'profile',
@@ -94,9 +97,11 @@ function MainTabs() {
 
 function AuthStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
+    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Landing">
+      <Stack.Screen name="Landing" component={LandingScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Signup" component={SignupScreen} />
+      <Stack.Screen name="PhotoUpload" component={PhotoUploadScreen} />
     </Stack.Navigator>
   );
 }
