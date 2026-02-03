@@ -1,10 +1,12 @@
 """
 Shared utility functions for core business logic.
 """
-import json
+import io
 import os
+import json
 from typing import Any, Optional, Tuple
 from fastapi import UploadFile
+from PIL import Image
 
 from app.core.constants import (
     DEFAULT_IMAGE_EXTENSION,
@@ -59,6 +61,45 @@ def get_file_extension(filename: Optional[str], default: str = DEFAULT_IMAGE_EXT
     return ext if ext else default
 
 
+
+def resize_image_bytes(content: bytes, max_dimension: int = 1024, quality: int = 85) -> bytes:
+    """
+    Resize image bytes to max dimension while preserving aspect ratio.
+    Default max_dimension 1024 is sufficient for broad fashion analysis and highly cost-effective.
+    """
+    try:
+        # Open image from bytes
+        img = Image.open(io.BytesIO(content))
+        
+        # Calculate new dimensions
+        width, height = img.size
+        if width > max_dimension or height > max_dimension:
+            if width > height:
+                new_width = max_dimension
+                new_height = int(height * (max_dimension / width))
+            else:
+                new_height = max_dimension
+                new_width = int(width * (max_dimension / height))
+            
+            # Resize
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # Save back to bytes
+            output = io.BytesIO()
+            # Convert to RGB if saving as JPEG to avoid alpha channel issues
+            format_to_save = img.format if img.format else "JPEG"
+            if format_to_save == "JPEG" and img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+                
+            img.save(output, format=format_to_save, quality=quality)
+            return output.getvalue()
+            
+        return content  # Return original if no resize needed
+    except Exception as e:
+        print(f"⚠️ Image resize failed: {e}")
+        return content  # Fallback to original on error
+
+
 def normalize_path(path: str) -> str:
     """Normalize path separators for URL compatibility"""
     return path.replace('\\', '/')
@@ -66,10 +107,23 @@ def normalize_path(path: str) -> str:
 
 def map_garment_type(garment_type: str) -> str:
     """Map AI garment type to DressType enum value"""
-    return DRESS_TYPE_MAPPING.get(garment_type.lower(), "OTHER")
+    if not garment_type:
+        return "OTHER"
+    gt = str(garment_type).strip().lower()
+    # Normalize common separators and punctuation
+    gt = gt.replace(" ", "_").replace("/", "_").replace("-", "_")
+    while "__" in gt:
+        gt = gt.replace("__", "_")
+    return DRESS_TYPE_MAPPING.get(gt, DRESS_TYPE_MAPPING.get(gt.replace("_", "-"), "OTHER"))
 
 
 def map_style(style: str) -> str:
     """Map AI style to DressStyle enum value"""
-    return STYLE_MAPPING.get(style.lower(), "OTHER")
+    if not style:
+        return "OTHER"
+    s = str(style).strip().lower()
+    s = s.replace(" ", "_").replace("/", "_").replace("-", "_")
+    while "__" in s:
+        s = s.replace("__", "_")
+    return STYLE_MAPPING.get(s, STYLE_MAPPING.get(s.replace("_", "-"), "OTHER"))
 

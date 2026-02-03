@@ -52,6 +52,13 @@ async def generate_recommendation_task(
             profile_summary = user_profile.profile_summary_text or ""
             print(f"   ✓ Loaded user AI profile")
         
+        # Inject structured data into profile context
+        profile_data["age"] = user_profile.age
+        profile_data["marital_status"] = user_profile.marital_status
+        profile_data["occupation"] = user_profile.occupation
+        profile_data["gender"] = user_profile.gender
+        profile_data["location"] = f"{user_profile.state}, {user_profile.country}" if user_profile.country else None
+        
         # Get user images (for potential try-on)
         user_images = db.query(UserImage).filter(
             UserImage.user_id == user_id,
@@ -129,10 +136,22 @@ async def generate_recommendation_task(
                 print(f"      Lambda (relevance weight): 0.7 (70% relevance, 30% diversity)")
                 
                 # Apply MMR for diversity
+                # Ensure embeddings are JSON-serializable (numpy arrays -> lists)
+                safe_recent_embeddings = []
+                for emb in recent_embeddings:
+                    try:
+                        if hasattr(emb, "tolist"):
+                            safe_recent_embeddings.append(json.dumps(emb.tolist()))
+                        else:
+                            safe_recent_embeddings.append(json.dumps(emb))
+                    except Exception:
+                        # Last resort: skip this embedding
+                        continue
+
                 diverse_candidates = apply_mmr(
                     candidates=candidates,
                     query_embedding=query_embedding_vec,
-                    recent_embeddings=[json.dumps(emb) for emb in recent_embeddings],
+                    recent_embeddings=safe_recent_embeddings,
                     k=20,  # Final count for LLM
                     lambda_param=0.7  # Balance relevance (70%) vs diversity (30%)
                 )

@@ -6,7 +6,13 @@ from typing import Optional, Tuple, Dict, Any
 from sqlalchemy.orm import Session
 
 from app.models import User
-from app.utils import verify_password, get_password_hash, create_access_token
+from app.utils import (
+    verify_password, 
+    get_password_hash, 
+    create_access_token,
+    create_reset_token,
+    verify_reset_token
+)
 from app.config import settings
 
 
@@ -79,4 +85,47 @@ def get_user_info(user: User) -> Dict[str, Any]:
         "email": user.email,
         "is_active": user.is_active
     }
+
+
+def process_password_reset_request(db: Session, email: str) -> Tuple[bool, str]:
+    """
+    Process a password reset request.
+    Generates a token and 'sends' it (logs to console for POC).
+    """
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # For security, don't reveal if email exists, but return success
+        # "If this email is registered, you will receive instructions..."
+        return True, "If your email is registered, you will receive a reset link."
+    
+    token = create_reset_token(email)
+    
+    # In a real app, send email here. For POC, log to console.
+    print(f"\n{'='*60}")
+    print(f"🔐 PASSWORD RESET REQUEST")
+    print(f"   User: {email}")
+    print(f"   Token: {token}")
+    print(f"   Reset Link (Simulated): https://app.dripdirective.com/reset-password?token={token}")
+    print(f"{'='*60}\n")
+    
+    return True, "Password reset link has been sent to your email."
+
+
+def confirm_password_reset(db: Session, token: str, new_password: str) -> Tuple[bool, str]:
+    """
+    Confirm password reset with token and new password.
+    """
+    email = verify_reset_token(token)
+    if not email:
+        return False, "Invalid or expired reset token"
+    
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        return False, "User not found"
+    
+    # Update password
+    user.hashed_password = get_password_hash(new_password)
+    db.commit()
+    
+    return True, "Password updated successfully"
 

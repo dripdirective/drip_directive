@@ -117,6 +117,7 @@ async def process_user_images_task(user_id: int) -> None:
         
         print(f"   Found {len(user_images)} pending images")
         
+        
         # Prepare image paths
         image_paths = {}
         for img in user_images:
@@ -128,9 +129,22 @@ async def process_user_images_task(user_id: int) -> None:
         db.commit()
         
         print(f"   Image paths prepared: {list(image_paths.keys())}")
+
+        # Fetch existing user profile for context
+        previous_profile = None
+        current_profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if current_profile and current_profile.additional_info:
+            try:
+                info = parse_json_safe(current_profile.additional_info)
+                if isinstance(info, dict):
+                    previous_profile = info.get("ai_profile_analysis", {}).get("analysis")
+                    if previous_profile:
+                        print(f"   👤 Found previous profile data")
+            except Exception as e:
+                print(f"   ⚠️ Failed to parse previous profile: {e}")
         
-        # Process images with AI
-        metadata = await ai_service.process_user_images(user_id, image_paths)
+        # Process images with AI (passing previous profile for consistency)
+        metadata = await ai_service.process_user_images(user_id, image_paths, previous_profile)
         
         # Update images with metadata
         for img in user_images:
@@ -175,9 +189,12 @@ async def _update_user_profile_with_ai(db: Session, user_id: int, combined_profi
         UserProfile.user_id == user_id
     ).first()
     
-    # Extract summary text from AI analysis
+    # Extract summary points from AI analysis
     analysis = combined_profile.get("analysis", {})
-    summary_text = analysis.get("summary_text", "")
+    summary_points = analysis.get("summary_points", [])
+    
+    # Create text block for embedding and DB storage (Text column)
+    summary_text = "\n\n".join(summary_points) if isinstance(summary_points, list) else str(summary_points)
     
     # Log extracted metadata details
     print(f"\n{'='*70}")
@@ -206,17 +223,11 @@ async def _update_user_profile_with_ai(db: Session, user_id: int, combined_profi
     recommended_styles = style.get("recommended_styles", [])
     print(f"      - Recommended Styles: {', '.join(recommended_styles[:3]) if recommended_styles else 'N/A'}")
     
-    # Confidence scores
-    confidence = analysis.get("confidence_scores", {})
-    print(f"   📊 Confidence Scores:")
-    print(f"      - Overall: {confidence.get('overall_confidence', 0)}%")
-    print(f"      - Body Type: {confidence.get('body_type_confidence', 0)}%")
-    print(f"      - Style Assessment: {confidence.get('style_assessment_confidence', 0)}%")
-    
     # Summary
-    print(f"   📝 Summary Text: {len(summary_text)} characters")
-    if summary_text:
-        print(f"      Preview: {summary_text[:150]}...")
+    print(f"   📝 Summary Points: {len(summary_points)} items")
+    if summary_points:
+        for i, point in enumerate(summary_points[:3]):
+            print(f"      {i+1}. {point[:80]}...")
     
     print(f"{'='*70}\n")
     
@@ -318,11 +329,62 @@ async def process_wardrobe_images_task(wardrobe_item_id: int) -> None:
         
         # Process the first image with AI (typically one image per wardrobe item)
         first_image = original_images[0]
-        metadata = await ai_service.process_wardrobe_images(first_image.image_path)
+        
+        # Extract gender from user profile for tailored analysis
+        gender = None
+        user_profile = db.query(UserProfile).filter(UserProfile.user_id == wardrobe_item.user_id).first()
+        if user_profile:
+            if user_profile.gender:
+                gender = user_profile.gender
+            else:
+                # content of additional_info might be stringified JSON
+                try:
+                    info = json.loads(user_profile.additional_info) if isinstance(user_profile.additional_info, str) else user_profile.additional_info
+                    if info and isinstance(info, dict):
+                        gender = info.get("gender")
+                except:
+                    pass
+        
+        metadata = await ai_service.process_wardrobe_images(first_image.image_path, gender=gender)
         
         # Extract clothing analysis
         clothing_data = metadata.get("clothing_analysis", {})
+
+        # If the model returned empty/invalid JSON, mark as failed (so UI shows failure instead of blank "OTHER").
+        if isinstance(clothing_data, dict) and clothing_data.get("parse_error"):
+            print(f"   🛑 Wardrobe analysis returned invalid JSON: {clothing_data.get('parse_error')}")
+            wardrobe_item.processing_status = ProcessingStatus.FAILED
+            wardrobe_item.ai_metadata = json.dumps(metadata)
+            wardrobe_item.item_summary_text = ""
+            wardrobe_item.item_embedding = None
+            db.commit()
+            return
+
+        # Debug: confirm which fields we actually have before mapping/saving
+        try:
+            keys = sorted(list(clothing_data.keys()))[:60]
+            print(f"   🧾 clothing_data keys (first 60): {keys}")
+            print(f"   🧾 clothing_data preview: {json.dumps(clothing_data, ensure_ascii=False)[:600]}...")
+        except Exception:
+            pass
         
+        # GUARDRAIL: Check if it's a valid fashion item
+        is_valid = clothing_data.get("is_fashion_item", True)
+        if not is_valid:
+            refusal_reason = clothing_data.get("refusal_reason", "Not a valid fashion item")
+            print(f"\n{'='*70}")
+            print(f"🛑 WARDROBE PROCESSING BLOCKED")
+            print(f"{'='*70}")
+            print(f"   Reason: {refusal_reason}")
+            print(f"   Status: Failed")
+            print(f"{'='*70}\n")
+            
+            wardrobe_item.processing_status = ProcessingStatus.FAILED
+            # Save metadata so user can see why it failed
+            wardrobe_item.ai_metadata = json.dumps(metadata)
+            db.commit()
+            return
+
         # Log extracted metadata details
         print(f"\n{'='*70}")
         print(f"👕 WARDROBE ITEM METADATA EXTRACTION")
@@ -369,11 +431,22 @@ async def process_wardrobe_images_task(wardrobe_item_id: int) -> None:
             if accessories:
                 print(f"   💍 Accessories: {', '.join(accessories[:3])}")
         
-        # Summary
-        summary = clothing_data.get('summary_text', '')
-        print(f"   📝 Summary: {len(summary)} characters")
-        if summary:
-            print(f"      Preview: {summary[:120]}...")
+        # Summary (Handle both text and points for backward compatibility)
+        summary_points = clothing_data.get('summary_points', [])
+        summary_text = clothing_data.get('summary_text', "")
+        
+        if summary_points and isinstance(summary_points, list):
+            # Join points for storage
+            summary_text = "\n\n".join(summary_points)
+            print(f"   📝 Summary Points: {len(summary_points)} items")
+            for i, point in enumerate(summary_points[:3]):
+                print(f"      {i+1}. {point[:80]}...")
+        elif summary_text:
+            print(f"   📝 Summary: {len(summary_text)} characters")
+            print(f"      Preview: {summary_text[:120]}...")
+            
+        # Ensure summary_text is available for creating embedding
+        clothing_data['summary_text'] = summary_text
         
         print(f"{'='*70}\n")
         
@@ -408,7 +481,7 @@ async def process_wardrobe_images_task(wardrobe_item_id: int) -> None:
         wardrobe_item.style = mapped_style
         wardrobe_item.color = color
         wardrobe_item.ai_metadata = json.dumps(metadata)
-        wardrobe_item.item_summary_text = clothing_data.get("summary_text", "")
+        wardrobe_item.item_summary_text = summary_text
         wardrobe_item.item_embedding = embedding
         wardrobe_item.processing_status = ProcessingStatus.COMPLETED
         
@@ -419,7 +492,7 @@ async def process_wardrobe_images_task(wardrobe_item_id: int) -> None:
         print(f"      - style: {mapped_style}")
         print(f"      - color: {color}")
         print(f"      - ai_metadata: {len(json.dumps(metadata))} bytes")
-        print(f"      - item_summary_text: {len(clothing_data.get('summary_text', ''))} chars")
+        print(f"      - item_summary_text: {len(summary_text)} chars")
         print(f"      - item_embedding: {len(embedding) if embedding else 0} bytes (JSON)")
         
         # Store in vector store (ChromaDB for local testing)
@@ -436,7 +509,7 @@ async def process_wardrobe_images_task(wardrobe_item_id: int) -> None:
                         "dress_type": mapped_dress_type,
                         "style": mapped_style,
                         "color": color,
-                        "summary_text": clothing_data.get("summary_text", "")[:500],
+                        "summary_text": summary_text[:500],
                         "embedding_source_text": comprehensive_text,
                         "occasions": clothing_data.get("occasion", []),
                         "formality_level": clothing_data.get("formality_level", ""),

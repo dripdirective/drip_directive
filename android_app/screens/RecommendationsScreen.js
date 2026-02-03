@@ -8,12 +8,14 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  Image,
+  Image as RNImage,
   Platform,
   Animated,
   useWindowDimensions,
   Modal,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { recommendationsAPI, wardrobeAPI } from '../services/api';
 import { API_BASE_URL } from '../config/api';
@@ -36,11 +38,54 @@ const formatDate = (dateString) => {
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  
+
   if (date.toDateString() === today.toDateString()) return 'Today';
   if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  
+
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const toWhyBullets = (text, max = 2) => {
+  if (!text || typeof text !== 'string') return [];
+  const t = text.trim();
+  if (!t) return [];
+  const parts = (t.includes('\n') || t.includes('•') || t.includes('- '))
+    ? t.split(/\n|•/).map(s => s.replace(/^\-\s*/, '').trim()).filter(Boolean)
+    : t.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+  return parts.slice(0, max);
+};
+
+// Fullscreen Image Preview Modal (outfit item / try-on)
+const ImagePreviewModal = ({ visible, imageUrl, onClose }) => {
+  if (!visible) return null;
+  return (
+    <Modal visible={visible} animationType="fade" onRequestClose={onClose} transparent={false}>
+      <View style={styles.imagePreviewContainer}>
+        <LinearGradient colors={[COLORS.background, COLORS.backgroundLight]} style={StyleSheet.absoluteFill} />
+        <View style={styles.imagePreviewHeader}>
+          <Text style={styles.imagePreviewTitle}>🖼️ Image</Text>
+          <TouchableOpacity onPress={onClose} style={styles.drawerClose} activeOpacity={0.85}>
+            <Text style={styles.drawerCloseText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+        {imageUrl ? (
+          <View style={styles.imagePreviewBody}>
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.imagePreviewImage}
+              contentFit="contain"
+              transition={200}
+            />
+          </View>
+        ) : (
+          <View style={styles.emptyHistory}>
+            <Text style={styles.emptyHistoryIcon}>🖼️</Text>
+            <Text style={styles.emptyHistoryText}>No image available</Text>
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
 };
 
 // Get occasion icon
@@ -81,12 +126,15 @@ const QUICK_PROMPTS = [
 ];
 
 // Sidebar Item Component
-const SidebarItem = ({ recommendation, isSelected, onSelect }) => {
+const SidebarItem = ({ recommendation, isSelected, onSelect, index, total }) => {
   const date = formatDate(recommendation.created_at);
   const icon = getOccasionIcon(recommendation.query);
   const label = getOccasionLabel(recommendation.query);
   const outfitCount = recommendation.outfits?.length || 0;
-  
+  // History is shown newest-first, but numbering should be oldest-first:
+  // oldest = #1, newest (top) = #N
+  const serial = Math.max(1, (Number(total) || 0) - (Number(index) || 0));
+
   return (
     <TouchableOpacity
       style={[styles.sidebarItem, isSelected && styles.sidebarItemSelected]}
@@ -96,18 +144,20 @@ const SidebarItem = ({ recommendation, isSelected, onSelect }) => {
       {isSelected && (
         <View style={styles.selectedIndicator} />
       )}
+      <View style={styles.sidebarIndexBadge}>
+        <Text style={styles.sidebarIndexText}>{serial}</Text>
+      </View>
       <View style={styles.sidebarItemContent}>
         <View style={styles.sidebarItemHeader}>
           <Text style={styles.sidebarIcon}>{icon}</Text>
-          <Text style={[styles.sidebarLabel, isSelected && styles.sidebarLabelSelected]}>
-            {label}
+          <Text style={[styles.sidebarLabel, isSelected && styles.sidebarLabelSelected]} numberOfLines={1}>
+            {(recommendation.query || '').trim() || label}
           </Text>
         </View>
-        <Text style={styles.sidebarDate}>{date}</Text>
-        <Text style={styles.sidebarQuery} numberOfLines={2}>{recommendation.query}</Text>
+        <Text style={styles.sidebarDate}>{date} • {label}</Text>
         <View style={styles.sidebarMeta}>
           <View style={[
-            styles.statusDot, 
+            styles.statusDot,
             { backgroundColor: recommendation.status === 'completed' ? COLORS.success : COLORS.warning }
           ]} />
           <Text style={styles.sidebarOutfits}>{outfitCount} outfit{outfitCount !== 1 ? 's' : ''}</Text>
@@ -155,7 +205,7 @@ const MobileDrawer = ({
         <Animated.View style={[styles.drawerPanel, { transform: [{ translateX: slideAnim }] }]}>
           <View style={styles.drawerHeader}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.drawerTitle}>✨ Style AI</Text>
+              <Text style={styles.drawerTitle}>✨ Style Studio</Text>
               <Text style={styles.drawerSubtitle}>{recommendations.length} sessions</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.drawerClose} activeOpacity={0.85}>
@@ -181,12 +231,14 @@ const MobileDrawer = ({
                 <Text style={styles.emptyHistoryText}>No history yet</Text>
               </View>
             ) : (
-              recommendations.map((rec) => (
+              recommendations.map((rec, idx) => (
                 <SidebarItem
                   key={rec.id}
                   recommendation={rec}
                   isSelected={selectedId === rec.id}
                   onSelect={() => onSelect(rec)}
+                  index={idx}
+                  total={recommendations.length}
                 />
               ))
             )}
@@ -198,13 +250,14 @@ const MobileDrawer = ({
 };
 
 // Outfit Display Component
-const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, recommendationId }) => {
+const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, recommendationId, onViewImage, showTryOnSection = false }) => {
   const [showTryon, setShowTryon] = useState(false);
-  
+  const [showWhy, setShowWhy] = useState(true);
+
   const getWardrobeItem = (itemId) => {
     return wardrobeItems.find(w => w.id === itemId);
   };
-  
+
   const getWardrobeImage = (itemId) => {
     const item = getWardrobeItem(itemId);
     if (item && item.images && item.images.length > 0) {
@@ -213,7 +266,7 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
     }
     return null;
   };
-  
+
   const getItemName = (itemId) => {
     const item = getWardrobeItem(itemId);
     if (item) {
@@ -224,16 +277,18 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
     }
     return `Item ${itemId}`;
   };
-  
-  const tryonImageUrl = outfit.tryon_image_path 
-    ? (outfit.tryon_image_path.startsWith('http') 
-        ? outfit.tryon_image_path 
-        : `${API_BASE_URL}/${outfit.tryon_image_path}`)
+
+  const tryonImageUrl = outfit.tryon_image_path
+    ? (outfit.tryon_image_path.startsWith('http')
+      ? outfit.tryon_image_path
+      : `${API_BASE_URL}/${outfit.tryon_image_path}`)
     : null;
-  
+
   // Use wardrobe_item_ids if items array is empty
   const itemIds = outfit.wardrobe_item_ids || outfit.items?.map(i => i.wardrobe_item_id) || [];
-  
+  const whyText = outfit.style_reasoning || outfit.why_it_works || '';
+  const whyBullets = toWhyBullets(whyText, 2);
+
   return (
     <View style={styles.outfitContainer}>
       {/* Outfit Header */}
@@ -248,19 +303,46 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
           )}
         </View>
       </View>
-      
+
+      {/* Why selected (simple) */}
+      {whyBullets.length > 0 && (
+        <View style={[styles.descriptionBox, { borderLeftColor: COLORS.primary }]}>
+          <TouchableOpacity onPress={() => setShowWhy(!showWhy)} activeOpacity={0.85}>
+            <Text style={[styles.descriptionLabel, { color: COLORS.primary }]}>
+              💡 Why this outfit {showWhy ? '▼' : '▶'}
+            </Text>
+          </TouchableOpacity>
+          {showWhy && whyBullets.map((b, idx) => (
+            <Text key={idx} style={styles.descriptionText}>• {b}</Text>
+          ))}
+        </View>
+      )}
+
       {/* Items Grid */}
       <Text style={styles.sectionLabel}>Outfit Items ({itemIds.length})</Text>
+      {itemIds.length === 0 && (
+        <View style={styles.emptyOutfitBox}>
+          <Text style={styles.emptyOutfitIcon}>🧩</Text>
+          <Text style={styles.emptyOutfitText}>No matching wardrobe items for this outfit.</Text>
+        </View>
+      )}
       <View style={styles.itemsGrid}>
         {itemIds.map((itemId, idx) => {
           const imageUrl = getWardrobeImage(itemId);
           const itemName = getItemName(itemId);
           const wardrobeItem = getWardrobeItem(itemId);
-          
+
           return (
             <View key={idx} style={styles.outfitItemCard}>
               {imageUrl ? (
-                <Image source={{ uri: imageUrl }} style={styles.outfitItemImage} resizeMode="contain" />
+                <TouchableOpacity onPress={() => onViewImage?.(imageUrl)} activeOpacity={0.9}>
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.outfitItemImage}
+                    contentFit="contain"
+                    transition={200}
+                  />
+                </TouchableOpacity>
               ) : (
                 <View style={styles.outfitItemPlaceholder}>
                   <Text style={styles.placeholderIcon}>👕</Text>
@@ -271,12 +353,26 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
                 {wardrobeItem?.color && (
                   <Text style={styles.outfitItemTip} numberOfLines={1}>🎨 {wardrobeItem.color}</Text>
                 )}
+                {imageUrl && (
+                  <Text style={styles.outfitItemTapHint} numberOfLines={1}>Tap image to view</Text>
+                )}
               </View>
             </View>
           );
         })}
       </View>
-      
+
+      {/* Missing Items (Complete the Look) */}
+      {outfit.missing_items && outfit.missing_items.length > 0 && (
+        <View style={[styles.descriptionBox, { borderLeftColor: COLORS.warning, backgroundColor: COLORS.warning + '10' }]}>
+          <Text style={[styles.descriptionLabel, { color: COLORS.warning }]}>🛍️ Missing Items</Text>
+          <Text style={[styles.descriptionText, { marginBottom: 4 }]}>To complete this look, add:</Text>
+          {outfit.missing_items.map((item, idx) => (
+            <Text key={idx} style={[styles.descriptionText, { fontWeight: '600' }]}>+ {item}</Text>
+          ))}
+        </View>
+      )}
+
       {/* Description */}
       {outfit.description && (
         <View style={styles.descriptionBox}>
@@ -284,7 +380,7 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
           <Text style={styles.descriptionText}>{outfit.description}</Text>
         </View>
       )}
-      
+
       {/* Why It Works */}
       {outfit.why_it_works && (
         <View style={[styles.descriptionBox, { borderLeftColor: COLORS.success }]}>
@@ -292,7 +388,7 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
           <Text style={styles.descriptionText}>{outfit.why_it_works}</Text>
         </View>
       )}
-      
+
       {/* Styling Tips */}
       {outfit.styling_tips && outfit.styling_tips.length > 0 && (
         <View style={[styles.descriptionBox, { borderLeftColor: COLORS.tertiary }]}>
@@ -302,52 +398,59 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
           ))}
         </View>
       )}
-      
-      {/* Try-On Section */}
-      <View style={styles.tryonSection}>
-        <Text style={styles.sectionLabel}>Virtual Try-On</Text>
-        
-        {tryonImageUrl && (
-          <TouchableOpacity 
-            style={styles.tryonImageContainer}
-            onPress={() => setShowTryon(!showTryon)}
+
+      {/* Try-On Section (hidden for now to save space) */}
+      {showTryOnSection && (
+        <View style={styles.tryonSection}>
+          <Text style={styles.sectionLabel}>Virtual Try-On</Text>
+
+          {tryonImageUrl && (
+            <TouchableOpacity
+              style={styles.tryonImageContainer}
+              onPress={() => onViewImage?.(tryonImageUrl)}
+            >
+              {showTryon ? (
+                <Image
+                  source={{ uri: tryonImageUrl }}
+                  style={styles.tryonImage}
+                  contentFit="contain"
+                  transition={200}
+                />
+              ) : (
+                <View style={styles.tryonPreview}>
+                  <Text style={styles.tryonPreviewIcon}>🖼️</Text>
+                  <Text style={styles.tryonPreviewText}>Tap to view try-on result</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.tryonButton, loadingTryOn && styles.buttonDisabled]}
+            onPress={() => onTryOn && onTryOn(recommendationId, index)}
+            disabled={loadingTryOn}
+            activeOpacity={0.8}
           >
-            {showTryon ? (
-              <Image source={{ uri: tryonImageUrl }} style={styles.tryonImage} resizeMode="contain" />
-            ) : (
-              <View style={styles.tryonPreview}>
-                <Text style={styles.tryonPreviewIcon}>🖼️</Text>
-                <Text style={styles.tryonPreviewText}>Tap to view try-on result</Text>
-              </View>
-            )}
+            <LinearGradient
+              colors={loadingTryOn ? [COLORS.surface, COLORS.surfaceLight] : COLORS.gradients.accent}
+              style={styles.tryonButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              {loadingTryOn ? (
+                <View style={styles.loadingRow}>
+                  <ActivityIndicator color={COLORS.textPrimary} size="small" />
+                  <Text style={styles.tryonButtonText}>  Generating...</Text>
+                </View>
+              ) : (
+                <Text style={styles.tryonButtonText}>
+                  {tryonImageUrl ? '🔄 Regenerate Try-On' : '👗 Try This On Me'}
+                </Text>
+              )}
+            </LinearGradient>
           </TouchableOpacity>
-        )}
-        
-        <TouchableOpacity
-          style={[styles.tryonButton, loadingTryOn && styles.buttonDisabled]}
-          onPress={() => onTryOn && onTryOn(recommendationId, index)}
-          disabled={loadingTryOn}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={loadingTryOn ? [COLORS.surface, COLORS.surfaceLight] : COLORS.gradients.accent}
-            style={styles.tryonButtonGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            {loadingTryOn ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={COLORS.textPrimary} size="small" />
-                <Text style={styles.tryonButtonText}>  Generating...</Text>
-              </View>
-            ) : (
-              <Text style={styles.tryonButtonText}>
-                {tryonImageUrl ? '🔄 Regenerate Try-On' : '👗 Try This On Me'}
-              </Text>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -355,7 +458,7 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
 // Generating Animation
 const GeneratingView = ({ status, message, progress }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  
+
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
@@ -366,7 +469,7 @@ const GeneratingView = ({ status, message, progress }) => {
     animation.start();
     return () => animation.stop();
   }, []);
-  
+
   return (
     <View style={styles.generatingContainer}>
       <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
@@ -402,6 +505,8 @@ export default function RecommendationsScreen() {
   const [loadingTryOn, setLoadingTryOn] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState(null);
   const didInitRef = useRef(false);
 
   useEffect(() => {
@@ -425,7 +530,7 @@ export default function RecommendationsScreen() {
       const sortedRecs = (recsData || []).sort((a, b) => b.id - a.id);
       setRecommendations(sortedRecs);
       setWardrobeItems(wardrobeData || []);
-      
+
       // Select the latest one by default
       if (sortedRecs.length > 0 && !selectedRec) {
         setSelectedRec(sortedRecs[0]);
@@ -437,54 +542,68 @@ export default function RecommendationsScreen() {
     }
   };
 
+  const handleViewImage = (url) => {
+    if (!url) return;
+    setSelectedImageUrl(url);
+    setShowImageModal(true);
+  };
+
   const handleGenerate = async () => {
     const processedItems = wardrobeItems.filter(item => item.processing_status === 'completed');
-    
+
     if (processedItems.length < 2) {
       showAlert('Not Enough Items', 'Please add and analyze at least 2 wardrobe items first.');
       return;
     }
-    
+
     if (!query.trim()) {
       showAlert('Enter a Prompt', 'Please describe what kind of outfit you\'re looking for.');
       return;
     }
-    
+
     try {
       setGenerating(true);
       setShowNewForm(false);
       setGeneratingStatus({ status: '🚀 Starting', message: 'Preparing request...', progress: 10 });
-      
-      const result = await recommendationsAPI.generate(query.trim());
-      
-      setGeneratingStatus({ status: '🤖 AI Working', message: 'Analyzing your style...', progress: 40 });
-      
-      const recommendationId = result.id;
+
+      const startedAt = Date.now();
+      const targetQuery = query.trim();
+      await recommendationsAPI.generate(targetQuery);
+
+      setGeneratingStatus({ status: '🤖 Style Studio Working', message: 'Analyzing your style...', progress: 40 });
+
       let attempts = 0;
       const maxAttempts = 30;
-      
+
       const checkStatus = setInterval(async () => {
         attempts++;
         const progress = Math.min(40 + (attempts / maxAttempts) * 55, 95);
-        
-        setGeneratingStatus({ 
+
+        setGeneratingStatus({
           status: '✨ Creating Outfits',
           message: 'Curating perfect looks...',
           progress
         });
-        
+
         try {
           const data = await recommendationsAPI.getAll();
-          const rec = data.find(r => r.id === recommendationId);
-          
+          const sorted = (data || []).slice().sort((a, b) => b.id - a.id);
+          // The /generate endpoint does NOT return an id. Find the newest rec that matches this query after we started.
+          const rec = sorted.find(r => {
+            const sameQuery = String(r?.query || '').trim().toLowerCase() === targetQuery.toLowerCase();
+            const createdAt = r?.created_at ? new Date(r.created_at).getTime() : 0;
+            return sameQuery && createdAt >= (startedAt - 10_000);
+          }) || sorted[0];
+
           if (rec && rec.status === 'completed') {
             clearInterval(checkStatus);
             setGeneratingStatus({ status: '🎉 Done!', message: 'Your outfits are ready!', progress: 100 });
-            
+
             setTimeout(() => {
-              const sortedRecs = data.sort((a, b) => b.id - a.id);
+              const sortedRecs = (data || []).slice().sort((a, b) => b.id - a.id);
               setRecommendations(sortedRecs);
-              setSelectedRec(rec);
+              // Always open the request we just triggered (or the newest if not found)
+              setSelectedRec(rec || sortedRecs[0] || null);
               setSelectedOutfitIndex(0);
               setGenerating(false);
               setGeneratingStatus(null);
@@ -499,7 +618,7 @@ export default function RecommendationsScreen() {
         } catch (error) {
           console.error('Poll error:', error);
         }
-        
+
         if (attempts >= maxAttempts) {
           clearInterval(checkStatus);
           setGenerating(false);
@@ -507,7 +626,7 @@ export default function RecommendationsScreen() {
           loadData();
         }
       }, 2000);
-      
+
     } catch (error) {
       setGenerating(false);
       setGeneratingStatus(null);
@@ -519,7 +638,7 @@ export default function RecommendationsScreen() {
     try {
       setLoadingTryOn(true);
       const result = await recommendationsAPI.generateTryOn(recommendationId, outfitIndex);
-      
+
       if (result && result.image_path) {
         setRecommendations(prev => prev.map(rec => {
           if (rec.id === recommendationId && rec.outfits) {
@@ -534,7 +653,7 @@ export default function RecommendationsScreen() {
           }
           return rec;
         }));
-        
+
         // Update selected rec
         if (selectedRec && selectedRec.id === recommendationId) {
           setSelectedRec(prev => {
@@ -548,8 +667,8 @@ export default function RecommendationsScreen() {
             return { ...prev, outfits: updatedOutfits };
           });
         }
-        
-        showAlert('✨ Success', 'Your virtual try-on is ready!');
+
+        // showAlert('✨ Success', 'Your virtual try-on is ready!');
       }
     } catch (error) {
       showAlert('Error', error.response?.data?.detail || 'Failed to generate try-on');
@@ -570,7 +689,7 @@ export default function RecommendationsScreen() {
       <View style={styles.loadingContainer}>
         <LinearGradient colors={[COLORS.background, COLORS.backgroundLight]} style={StyleSheet.absoluteFill} />
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading Style AI...</Text>
+        <Text style={styles.loadingText}>Loading Style Studio...</Text>
       </View>
     );
   }
@@ -579,10 +698,17 @@ export default function RecommendationsScreen() {
   const isMobileLayout = Platform.OS !== 'web' || windowWidth < 820;
 
   return (
-    <View style={styles.container}>
-      <LinearGradient colors={[COLORS.background, COLORS.backgroundLight]} style={StyleSheet.absoluteFill} />
+    <KeyboardAvoidingView
+      style={styles.container}
+      // iOS needs padding; Android "height" can break scroll gestures on some devices.
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Offset to keep the multiline input visible above keyboard + bottom nav (iOS)
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <View style={styles.container}>
+        <LinearGradient colors={[COLORS.background, COLORS.backgroundLight]} style={StyleSheet.absoluteFill} />
 
-      <View style={[styles.mainLayout, isMobileLayout ? styles.mainLayoutMobile : styles.mainLayoutDesktop]}>
+        <View style={[styles.mainLayout, isMobileLayout ? styles.mainLayoutMobile : styles.mainLayoutDesktop]}>
         {isMobileLayout ? (
           <>
             {/* Mobile Header */}
@@ -596,7 +722,7 @@ export default function RecommendationsScreen() {
               </TouchableOpacity>
 
               <View style={{ flex: 1 }}>
-                <Text style={styles.mobileTitle}>Style AI</Text>
+                <Text style={styles.mobileTitle}>Style Studio</Text>
                 <Text style={styles.mobileSubtitle}>Ask for outfits from your wardrobe</Text>
               </View>
 
@@ -628,7 +754,7 @@ export default function RecommendationsScreen() {
           /* Desktop Sidebar */
           <View style={styles.sidebar}>
             <View style={styles.sidebarHeader}>
-              <Text style={styles.sidebarTitle}>✨ Style AI</Text>
+              <Text style={styles.sidebarTitle}>✨ Style Studio</Text>
               <Text style={styles.sidebarSubtitle}>{recommendations.length} sessions</Text>
             </View>
 
@@ -654,12 +780,14 @@ export default function RecommendationsScreen() {
                   <Text style={styles.emptyHistoryText}>No history yet</Text>
                 </View>
               ) : (
-                recommendations.map((rec) => (
+                recommendations.map((rec, idx) => (
                   <SidebarItem
                     key={rec.id}
                     recommendation={rec}
                     isSelected={selectedRec?.id === rec.id && !showNewForm}
                     onSelect={handleSelectRec}
+                    index={idx}
+                    total={recommendations.length}
                   />
                 ))
               )}
@@ -673,14 +801,21 @@ export default function RecommendationsScreen() {
           {generating && generatingStatus && (
             <GeneratingView {...generatingStatus} />
           )}
-          
+
           {/* New Form */}
           {!generating && showNewForm && (
-            <ScrollView style={styles.newFormContainer} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.newFormContainer}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              nestedScrollEnabled
+              contentContainerStyle={{ paddingBottom: 140 }}
+            >
               <View style={styles.newFormContent}>
                 <Text style={styles.newFormTitle}>✨ Create New Outfit</Text>
                 <Text style={styles.newFormSubtitle}>Tell me what you're looking for</Text>
-                
+
                 {/* Quick Prompts */}
                 <Text style={styles.quickPromptsLabel}>Quick suggestions:</Text>
                 <View style={styles.quickPromptsGrid}>
@@ -697,7 +832,7 @@ export default function RecommendationsScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
-                
+
                 {/* Custom Input */}
                 <Text style={styles.inputLabel}>Or describe your own:</Text>
                 <View style={styles.inputContainer}>
@@ -709,9 +844,10 @@ export default function RecommendationsScreen() {
                     onChangeText={setQuery}
                     multiline
                     maxLength={200}
+                    returnKeyType="done"
                   />
                 </View>
-                
+
                 {/* Generate Button */}
                 <TouchableOpacity
                   style={[styles.generateButton, (!query.trim() || processedCount < 2) && styles.buttonDisabled]}
@@ -720,8 +856,8 @@ export default function RecommendationsScreen() {
                   activeOpacity={0.8}
                 >
                   <LinearGradient
-                    colors={(!query.trim() || processedCount < 2) 
-                      ? [COLORS.surface, COLORS.surfaceLight] 
+                    colors={(!query.trim() || processedCount < 2)
+                      ? [COLORS.surface, COLORS.surfaceLight]
                       : COLORS.gradients.accent}
                     style={styles.generateButtonGradient}
                     start={{ x: 0, y: 0 }}
@@ -730,107 +866,110 @@ export default function RecommendationsScreen() {
                     <Text style={styles.generateButtonText}>🚀 Generate Outfits</Text>
                   </LinearGradient>
                 </TouchableOpacity>
-                
+
                 {processedCount < 2 && (
                   <Text style={styles.warningText}>⚠️ Add at least 2 analyzed wardrobe items first</Text>
                 )}
               </View>
             </ScrollView>
           )}
-          
+
           {/* Selected Recommendation */}
           {!generating && !showNewForm && selectedRec && (
-            <View style={styles.recommendationView}>
-              {/* Recommendation Header */}
-              <View style={styles.recHeader}>
+            <ScrollView
+              style={styles.recommendationScroll}
+              contentContainerStyle={styles.recommendationScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              nestedScrollEnabled
+            >
+              {/* Compact Header */}
+              <View style={styles.recHeaderCompact}>
                 <View style={styles.recHeaderLeft}>
-                  <Text style={styles.recIcon}>{getOccasionIcon(selectedRec.query)}</Text>
-                  <View>
-                    <Text style={styles.recTitle}>{getOccasionLabel(selectedRec.query)}</Text>
-                    <Text style={styles.recDate}>{formatDate(selectedRec.created_at)}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.recTitleSmall} numberOfLines={2}>
+                      {(selectedRec.query || '').trim()}
+                    </Text>
                   </View>
                 </View>
-                <View style={[
-                  styles.recStatusBadge,
-                  { backgroundColor: selectedRec.status === 'completed' ? COLORS.success : COLORS.warning }
-                ]}>
-                  <Text style={styles.recStatusText}>
-                    {selectedRec.status === 'completed' ? '✓ Complete' : '⏳ Processing'}
-                  </Text>
-                </View>
               </View>
-              
-              {/* Query */}
-              <View style={styles.queryBox}>
-                <Text style={styles.queryLabel}>Your Request:</Text>
-                <Text style={styles.queryText}>"{selectedRec.query}"</Text>
-              </View>
-              
+
               {/* Outfit Tabs */}
               {selectedRec.outfits && selectedRec.outfits.length > 0 && (
-                <>
-                  <View style={styles.outfitTabs}>
-                    {selectedRec.outfits.map((_, idx) => (
-                      <TouchableOpacity
-                        key={idx}
-                        style={[styles.outfitTab, selectedOutfitIndex === idx && styles.outfitTabActive]}
-                        onPress={() => setSelectedOutfitIndex(idx)}
-                      >
-                        <Text style={[styles.outfitTabText, selectedOutfitIndex === idx && styles.outfitTabTextActive]}>
-                          Outfit {idx + 1}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  
-                  {/* Outfit Content */}
-                  <ScrollView style={styles.outfitScroll} showsVerticalScrollIndicator={false}>
-                    <OutfitDisplay
-                      outfit={selectedRec.outfits[selectedOutfitIndex]}
-                      index={selectedOutfitIndex}
-                      wardrobeItems={wardrobeItems}
-                      onTryOn={handleTryOn}
-                      loadingTryOn={loadingTryOn}
-                      recommendationId={selectedRec.id}
-                    />
-                  </ScrollView>
-                </>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.outfitTabsRow}
+                  nestedScrollEnabled
+                >
+                  {selectedRec.outfits.map((_, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[styles.outfitTab, selectedOutfitIndex === idx && styles.outfitTabActive]}
+                      onPress={() => setSelectedOutfitIndex(idx)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.outfitTabText, selectedOutfitIndex === idx && styles.outfitTabTextActive]}>
+                        #{idx + 1}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               )}
-              
-              {/* No Outfits */}
-              {(!selectedRec.outfits || selectedRec.outfits.length === 0) && (
+
+              {/* Outfit Content (no nested ScrollView) */}
+              {selectedRec.outfits && selectedRec.outfits.length > 0 ? (
+                <OutfitDisplay
+                  outfit={selectedRec.outfits[selectedOutfitIndex]}
+                  index={selectedOutfitIndex}
+                  wardrobeItems={wardrobeItems}
+                  onTryOn={handleTryOn}
+                  loadingTryOn={loadingTryOn}
+                  recommendationId={selectedRec.id}
+                  onViewImage={handleViewImage}
+                  showTryOnSection={false}
+                />
+              ) : (
                 <View style={styles.noOutfits}>
                   <Text style={styles.noOutfitsIcon}>
                     {selectedRec.status === 'processing' ? '⏳' : '❌'}
                   </Text>
                   <Text style={styles.noOutfitsText}>
-                    {selectedRec.status === 'processing' 
-                      ? 'AI is creating your outfits...' 
+                    {selectedRec.status === 'processing'
+                      ? 'Creating your outfits...'
                       : 'No outfits generated'}
                   </Text>
                 </View>
               )}
-            </View>
+            </ScrollView>
           )}
-          
+
           {/* Empty State - No Selection */}
           {!generating && !showNewForm && !selectedRec && (
             <View style={styles.emptyContent}>
               <Text style={styles.emptyContentIcon}>👗</Text>
-              <Text style={styles.emptyContentTitle}>Welcome to Style AI</Text>
+              <Text style={styles.emptyContentTitle}>Welcome to Style Studio</Text>
               <Text style={styles.emptyContentText}>
-                Click "New Request" to get AI-powered outfit recommendations from your wardrobe
+                Click "New Request" to get smart outfit recommendations from your wardrobe
               </Text>
             </View>
           )}
         </View>
       </View>
 
-      <FlowNavBar
-        prev={{ route: 'Wardrobe', label: 'Back: Wardrobe', icon: '👗', enabled: true }}
-        next={null}
-      />
-    </View>
+          <ImagePreviewModal
+            visible={showImageModal}
+            imageUrl={selectedImageUrl}
+            onClose={() => setShowImageModal(false)}
+          />
+
+          <FlowNavBar
+            prev={{ route: 'Wardrobe', label: 'Back: Wardrobe', icon: '👗', enabled: true }}
+            next={null}
+          />
+        </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -838,7 +977,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: SPACING.lg, color: COLORS.textSecondary, fontSize: 16 },
-  
+
   // Main Layout
   mainLayout: {
     flex: 1,
@@ -912,7 +1051,7 @@ const styles = StyleSheet.create({
   drawerNewButtonGrad: { paddingVertical: SPACING.md, alignItems: 'center' },
   drawerNewButtonText: { color: COLORS.textPrimary, fontWeight: '900', fontSize: 14 },
   drawerList: { flex: 1 },
-  
+
   // Sidebar
   sidebar: {
     width: 280,
@@ -927,7 +1066,7 @@ const styles = StyleSheet.create({
   },
   sidebarTitle: { fontSize: 22, fontWeight: '800', color: COLORS.textPrimary },
   sidebarSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
-  
+
   // New Button
   newButton: {
     margin: SPACING.md,
@@ -939,16 +1078,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   newButtonText: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
-  
+
   // History List
   historyList: { flex: 1 },
-  emptyHistory: { 
-    padding: SPACING.xl, 
+  emptyHistory: {
+    padding: SPACING.xl,
     alignItems: 'center',
   },
   emptyHistoryIcon: { fontSize: 32, marginBottom: SPACING.sm },
   emptyHistoryText: { fontSize: 13, color: COLORS.textMuted },
-  
+
   // Sidebar Item
   sidebarItem: {
     flexDirection: 'row',
@@ -957,6 +1096,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
+  sidebarIndexBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.surfaceLight,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.sm,
+    marginTop: 2,
+  },
+  sidebarIndexText: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary },
   sidebarItemSelected: {
     backgroundColor: COLORS.primary + '15',
   },
@@ -978,13 +1130,13 @@ const styles = StyleSheet.create({
   sidebarMeta: { flexDirection: 'row', alignItems: 'center', marginTop: SPACING.xs },
   statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: SPACING.xs },
   sidebarOutfits: { fontSize: 10, color: COLORS.textMuted },
-  
+
   // Content Area
   contentArea: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  
+
   // Generating
   generatingContainer: {
     flex: 1,
@@ -1013,7 +1165,7 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: '100%', borderRadius: 4 },
   progressText: { fontSize: 13, color: COLORS.textMuted },
-  
+
   // New Form
   newFormContainer: { flex: 1 },
   newFormContent: { padding: SPACING.xl },
@@ -1058,31 +1210,28 @@ const styles = StyleSheet.create({
   generateButtonGradient: { paddingVertical: SPACING.lg, alignItems: 'center' },
   generateButtonText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
   warningText: { fontSize: 12, color: COLORS.warning, marginTop: SPACING.md, textAlign: 'center' },
-  
+
   // Recommendation View
   recommendationView: { flex: 1 },
-  recHeader: {
+  recommendationScroll: { flex: 1 },
+  recommendationScrollContent: { paddingBottom: 160 },
+  // Compact header to save space (mobile-first)
+  recHeaderCompact: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: SPACING.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
   },
   recHeaderLeft: { flexDirection: 'row', alignItems: 'center' },
-  recIcon: { fontSize: 32, marginRight: SPACING.md },
-  recTitle: { fontSize: 20, fontWeight: '700', color: COLORS.textPrimary },
-  recDate: { fontSize: 12, color: COLORS.textMuted },
-  recStatusBadge: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  recStatusText: { fontSize: 12, color: COLORS.textPrimary, fontWeight: '600' },
-  
+  recIconSmall: { fontSize: 22, marginRight: SPACING.sm },
+  recTitleSmall: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
+  recMetaSmall: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+
   // Query Box
-  queryBox: {
-    margin: SPACING.md,
+  queryBoxCompact: {
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
     padding: SPACING.md,
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.md,
@@ -1090,14 +1239,19 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.primary,
   },
   queryLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 4 },
-  queryText: { fontSize: 14, color: COLORS.textPrimary, fontStyle: 'italic' },
-  
+  queryTextCompact: { fontSize: 13, color: COLORS.textPrimary },
+
   // Outfit Tabs
   outfitTabs: {
     flexDirection: 'row',
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
     marginBottom: SPACING.md,
+  },
+  outfitTabsRow: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+    paddingBottom: SPACING.sm,
   },
   outfitTab: {
     paddingHorizontal: SPACING.lg,
@@ -1113,10 +1267,10 @@ const styles = StyleSheet.create({
   },
   outfitTabText: { fontSize: 13, color: COLORS.textMuted, fontWeight: '600' },
   outfitTabTextActive: { color: COLORS.textPrimary },
-  
-  // Outfit Scroll
+
+  // Outfit Scroll (legacy, no longer used for selected recommendation)
   outfitScroll: { flex: 1 },
-  
+
   // Outfit Container
   outfitContainer: { padding: SPACING.lg, paddingBottom: SPACING.xxxl },
   outfitHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.xl },
@@ -1133,10 +1287,10 @@ const styles = StyleSheet.create({
   outfitTitleContainer: { flex: 1 },
   outfitName: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary },
   outfitOccasion: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
-  
+
   // Section Label
   sectionLabel: { fontSize: 15, fontWeight: '700', color: COLORS.textMuted, marginBottom: SPACING.md, marginTop: SPACING.sm },
-  
+
   // Items Grid
   itemsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, marginBottom: SPACING.lg },
   outfitItemCard: {
@@ -1147,9 +1301,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  outfitItemImage: { 
-    width: '100%', 
-    height: 220, 
+  outfitItemImage: {
+    width: '100%',
+    height: 220,
     backgroundColor: COLORS.backgroundLight,
   },
   outfitItemPlaceholder: {
@@ -1163,7 +1317,39 @@ const styles = StyleSheet.create({
   outfitItemInfo: { padding: SPACING.md, backgroundColor: COLORS.surface },
   outfitItemName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4 },
   outfitItemTip: { fontSize: 12, color: COLORS.textMuted },
-  
+  outfitItemTapHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 4 },
+
+  // Image preview modal
+  imagePreviewContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    padding: SPACING.lg,
+    paddingTop: SPACING.xl,
+  },
+  imagePreviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  imagePreviewTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+  imagePreviewBody: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.xl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  imagePreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+
   // Description Box
   descriptionBox: {
     backgroundColor: COLORS.surface,
@@ -1175,7 +1361,20 @@ const styles = StyleSheet.create({
   },
   descriptionLabel: { fontSize: 14, fontWeight: '700', color: COLORS.secondary, marginBottom: SPACING.sm },
   descriptionText: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 22 },
-  
+
+  // Empty outfit
+  emptyOutfitBox: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  emptyOutfitIcon: { fontSize: 28, marginBottom: 6 },
+  emptyOutfitText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center' },
+
   // Try-On Section
   tryonSection: {
     backgroundColor: COLORS.surface,
@@ -1203,7 +1402,7 @@ const styles = StyleSheet.create({
   tryonButtonGradient: { paddingVertical: SPACING.lg, alignItems: 'center' },
   tryonButtonText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
   loadingRow: { flexDirection: 'row', alignItems: 'center' },
-  
+
   // No Outfits
   noOutfits: {
     flex: 1,
@@ -1213,7 +1412,7 @@ const styles = StyleSheet.create({
   },
   noOutfitsIcon: { fontSize: 48, marginBottom: SPACING.md },
   noOutfitsText: { fontSize: 16, color: COLORS.textMuted },
-  
+
   // Empty Content
   emptyContent: {
     flex: 1,

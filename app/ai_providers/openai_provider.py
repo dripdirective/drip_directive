@@ -28,10 +28,17 @@ class OpenAIProvider(AIProvider):
     
     def __init__(self, api_key: str, text_model: str = "gpt-4o-mini", 
                  image_model: str = "dall-e-3",
+                 vision_model: Optional[str] = None,
+                 fallback_vision_model: Optional[str] = None,
+                 enable_vision_fallback: bool = True,
                  max_concurrency: int = 4,
                  timeout_seconds: float = 60.0):
         self.api_key = api_key
         self.text_model = text_model
+        # Use a vision-capable model for image analysis (can differ from text_model)
+        self.vision_model = vision_model or text_model
+        self.fallback_vision_model = fallback_vision_model
+        self.enable_vision_fallback = bool(enable_vision_fallback)
         self.image_model = image_model
         self.max_concurrency = max(1, int(max_concurrency or 1))
         self.timeout_seconds = float(timeout_seconds or 60.0)
@@ -76,6 +83,82 @@ class OpenAIProvider(AIProvider):
         b64 = base64.b64encode(img_bytes).decode("utf-8")
         mime = "image/png" if img_format == "PNG" else "image/jpeg"
         return f"data:{mime};base64,{b64}"
+
+    def _extract_output_text(self, resp) -> str:
+        """
+        Extract text output from either ChatCompletions or Responses API objects.
+        """
+        if resp is None:
+            return ""
+        # New Responses API (openai>=1.0): resp.output_text convenience
+        text = getattr(resp, "output_text", None)
+        if text:
+            return str(text)
+        # ChatCompletions: resp.choices[0].message.content
+        try:
+            return str(resp.choices[0].message.content or "")
+        except Exception:
+            pass
+        # Fallback: best-effort stringify
+        try:
+            return str(resp)
+        except Exception:
+            return ""
+
+    async def _responses_vision(self, *, model_name: str, prompt: str, image_data_url: str) -> Dict:
+        """
+        Call OpenAI Responses API for vision analysis (preferred for GPT-5.x).
+        Returns {text, model} or {error, model}.
+        """
+        if not hasattr(self.client, "responses"):
+            return {"error": "Responses API not available in this OpenAI SDK", "model": model_name}
+
+        try:
+            # Prefer JSON mode if supported by the model; if rejected, fall back without it.
+            try:
+                resp = await self.client.responses.create(
+                    model=model_name,
+                    response_format={"type": "json_object"},
+                    input=[
+                        {
+                            "role": "system",
+                            "content": [{"type": "input_text", "text": "You must respond with ONLY valid JSON (no markdown, no extra text)."}],
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": prompt},
+                                {"type": "input_image", "image_url": image_data_url},
+                            ],
+                        },
+                    ],
+                    # NOTE: some GPT-5.x endpoints reject non-default temperature.
+                )
+            except Exception:
+                resp = await self.client.responses.create(
+                    model=model_name,
+                    input=[
+                        {
+                            "role": "system",
+                            "content": [{"type": "input_text", "text": "You must respond with ONLY valid JSON (no markdown, no extra text)."}],
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": prompt},
+                                {"type": "input_image", "image_url": image_data_url},
+                            ],
+                        },
+                    ],
+                    # NOTE: some GPT-5.x endpoints reject non-default temperature.
+                )
+
+            text = self._extract_output_text(resp)
+            if not text.strip():
+                return {"error": "Empty response from OpenAI vision model", "model": model_name, "api": "responses"}
+            return {"text": text, "model": model_name, "api": "responses"}
+        except Exception as e:
+            return {"error": str(e), "model": model_name, "api": "responses"}
     
     async def analyze_image(self, image: Image.Image, prompt: str) -> Dict:
         """Analyze single image with GPT-4o Vision"""
@@ -85,24 +168,74 @@ class OpenAIProvider(AIProvider):
         try:
             image_url = self._image_to_base64(image)
 
+            async def _call(model_name: str) -> Dict:
+                # Prefer Responses API for GPT-5.x vision (more reliable).
+                resp_out = await self._responses_vision(model_name=model_name, prompt=prompt, image_data_url=image_url)
+                if "error" not in resp_out:
+                    return resp_out
+
+                # Fallback to chat.completions vision style
+                try:
+                    resp = await self.client.chat.completions.create(
+                        model=model_name,
+                        response_format={"type": "json_object"},
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You must respond with ONLY valid JSON (no markdown, no extra text).",
+                            },
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {"type": "image_url", "image_url": {"url": image_url, "detail": "high"}},
+                                ],
+                            },
+                        ],
+                        max_completion_tokens=2000,
+                        # NOTE: some GPT-5.x endpoints reject non-default temperature.
+                    )
+                except Exception:
+                    resp = await self.client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You must respond with ONLY valid JSON (no markdown, no extra text).",
+                            },
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {"type": "image_url", "image_url": {"url": image_url, "detail": "high"}},
+                                ],
+                            },
+                        ],
+                        max_completion_tokens=2000,
+                        # NOTE: some GPT-5.x endpoints reject non-default temperature.
+                    )
+
+                text = self._extract_output_text(resp)
+                if not text.strip():
+                    return {"error": "Empty response from OpenAI vision model", "model": model_name, "api": "chat"}
+                return {"text": text, "model": model_name, "api": "chat"}
+
             async with self._semaphore:
-                response = await self.client.chat.completions.create(
-                    model=self.text_model,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": image_url, "detail": "low"},
-                                },
-                            ],
-                        }
-                    ],
-                    max_completion_tokens=2000,
-                )
-            return {"text": response.choices[0].message.content, "model": self.text_model}
+                primary = await _call(self.vision_model)
+                if "error" not in primary:
+                    return primary
+
+                # Optional one-shot fallback
+                if (
+                    self.enable_vision_fallback
+                    and self.fallback_vision_model
+                    and self.fallback_vision_model != self.vision_model
+                ):
+                    fallback = await _call(self.fallback_vision_model)
+                    if "error" not in fallback:
+                        return fallback
+
+                return primary
         except Exception as e:
             return {"error": str(e)}
     
@@ -112,13 +245,50 @@ class OpenAIProvider(AIProvider):
             return ""
         
         try:
+            # Prefer the Responses API (more reliable for GPT-5.x) and enforce JSON output,
+            # since callers typically expect machine-parsable JSON.
+            if hasattr(self.client, "responses"):
+                async with self._semaphore:
+                    try:
+                        resp = await self.client.responses.create(
+                            model=self.text_model,
+                            response_format={"type": "json_object"},
+                            input=[
+                                {
+                                    "role": "system",
+                                    "content": [{"type": "input_text", "text": "You must respond with ONLY valid JSON (no markdown, no extra text)."}],
+                                },
+                                {"role": "user", "content": [{"type": "input_text", "text": prompt}]},
+                            ],
+                        )
+                    except Exception:
+                        # If JSON mode is rejected by the model, fall back without it.
+                        resp = await self.client.responses.create(
+                            model=self.text_model,
+                            input=[
+                                {
+                                    "role": "system",
+                                    "content": [{"type": "input_text", "text": "You must respond with ONLY valid JSON (no markdown, no extra text)."}],
+                                },
+                                {"role": "user", "content": [{"type": "input_text", "text": prompt}]},
+                            ],
+                        )
+
+                text = self._extract_output_text(resp)
+                return (text or "").strip()
+
+            # Fallback to chat.completions (older SDKs / models)
             async with self._semaphore:
                 response = await self.client.chat.completions.create(
                     model=self.text_model,
-                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": "You must respond with ONLY valid JSON (no markdown, no extra text)."},
+                        {"role": "user", "content": prompt},
+                    ],
                     max_completion_tokens=2000,
                 )
-            return response.choices[0].message.content
+            return (response.choices[0].message.content or "").strip()
         except Exception as e:
             print(f"⚠️ OpenAI text generation error: {e}")
             return ""
@@ -129,22 +299,97 @@ class OpenAIProvider(AIProvider):
             return {"error": "OpenAI not available"}
         
         try:
-            content = [{"type": "text", "text": prompt}]
-            
-            for img in images:
-                image_url = self._image_to_base64(img)
-                content.append({
-                    "type": "image_url",
-                    "image_url": {"url": image_url, "detail": "low"}
-                })
+            # For batch, prefer Responses API with multiple input_image blocks.
+            image_urls = [self._image_to_base64(img) for img in images]
+
+            async def _call(model_name: str) -> Dict:
+                if hasattr(self.client, "responses"):
+                    try:
+                        user_content = [{"type": "input_text", "text": prompt}]
+                        for u in image_urls:
+                            user_content.append({"type": "input_image", "image_url": u})
+
+                        try:
+                            resp = await self.client.responses.create(
+                                model=model_name,
+                                response_format={"type": "json_object"},
+                                input=[
+                                    {
+                                        "role": "system",
+                                        "content": [{"type": "input_text", "text": "You must respond with ONLY valid JSON (no markdown, no extra text)."}],
+                                    },
+                                    {"role": "user", "content": user_content},
+                                ],
+                                # NOTE: some GPT-5.x endpoints reject non-default temperature.
+                            )
+                        except Exception:
+                            resp = await self.client.responses.create(
+                                model=model_name,
+                                input=[
+                                    {
+                                        "role": "system",
+                                        "content": [{"type": "input_text", "text": "You must respond with ONLY valid JSON (no markdown, no extra text)."}],
+                                    },
+                                    {"role": "user", "content": user_content},
+                                ],
+                                # NOTE: some GPT-5.x endpoints reject non-default temperature.
+                            )
+
+                        text = self._extract_output_text(resp)
+                        if text.strip():
+                            return {"text": text, "model": model_name, "api": "responses"}
+                        return {"error": "Empty response from OpenAI vision model", "model": model_name, "api": "responses"}
+                    except Exception as e:
+                        # fall through to chat.completions below
+                        pass
+
+                # Fallback to chat.completions with multiple image_url blocks
+                content = [{"type": "text", "text": prompt}]
+                for u in image_urls:
+                    content.append({"type": "image_url", "image_url": {"url": u, "detail": "high"}})
+
+                try:
+                    resp = await self.client.chat.completions.create(
+                        model=model_name,
+                        response_format={"type": "json_object"},
+                        messages=[
+                            {"role": "system", "content": "You must respond with ONLY valid JSON (no markdown, no extra text)."},
+                            {"role": "user", "content": content},
+                        ],
+                        max_completion_tokens=3000,
+                        # NOTE: some GPT-5.x endpoints reject non-default temperature.
+                    )
+                except Exception:
+                    resp = await self.client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {"role": "system", "content": "You must respond with ONLY valid JSON (no markdown, no extra text)."},
+                            {"role": "user", "content": content},
+                        ],
+                        max_completion_tokens=3000,
+                        # NOTE: some GPT-5.x endpoints reject non-default temperature.
+                    )
+
+                text = self._extract_output_text(resp)
+                if not text.strip():
+                    return {"error": "Empty response from OpenAI vision model", "model": model_name, "api": "chat"}
+                return {"text": text, "model": model_name, "api": "chat"}
 
             async with self._semaphore:
-                response = await self.client.chat.completions.create(
-                    model=self.text_model,
-                    messages=[{"role": "user", "content": content}],
-                    max_completion_tokens=3000,
-                )
-            return {"text": response.choices[0].message.content, "model": self.text_model}
+                primary = await _call(self.vision_model)
+                if "error" not in primary:
+                    return primary
+
+                if (
+                    self.enable_vision_fallback
+                    and self.fallback_vision_model
+                    and self.fallback_vision_model != self.vision_model
+                ):
+                    fallback = await _call(self.fallback_vision_model)
+                    if "error" not in fallback:
+                        return fallback
+
+                return primary
         except Exception as e:
             return {"error": str(e)}
     

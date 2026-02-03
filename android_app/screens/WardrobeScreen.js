@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,9 +8,9 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  Image,
   Modal,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { wardrobeAPI, aiProcessingAPI } from '../services/api';
@@ -29,6 +30,81 @@ const toBulletHighlights = (text, max = 2) => {
   return parts.slice(0, max);
 };
 
+const toStringOrNull = (v) => {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'string') {
+    const t = v.trim();
+    return t ? t : null;
+  }
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : null;
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  return null;
+};
+
+const asArray = (v) => {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.filter(Boolean);
+  return [v].filter(Boolean);
+};
+
+const joinPretty = (arr) => {
+  const a = asArray(arr).map(x => String(x).trim()).filter(Boolean);
+  if (a.length === 0) return null;
+  return a.join(', ');
+};
+
+const ListRow = ({ icon, label, items }) => {
+  const text = joinPretty(items);
+  if (!text) return null;
+  return (
+    <View style={styles.detailRowFull}>
+      <Text style={styles.detailIcon}>{icon}</Text>
+      <View style={styles.detailContent}>
+        <Text style={styles.detailLabel}>{label}</Text>
+        <Text style={styles.detailValueMultiline}>{text}</Text>
+      </View>
+    </View>
+  );
+};
+
+const safeJsonParse = (value) => {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+// ai_metadata can sometimes be double-encoded (JSON string inside JSON string).
+// This normalizes it and returns the inner `clothing_analysis` object if present.
+const parseWardrobeMetadata = (aiMetadata) => {
+  if (!aiMetadata) return null;
+  let v = aiMetadata;
+
+  // Unwrap up to 2 layers of JSON strings.
+  for (let i = 0; i < 2; i++) {
+    if (typeof v === 'string') {
+      const parsed = safeJsonParse(v);
+      if (parsed === null) break;
+      v = parsed;
+      continue;
+    }
+    break;
+  }
+
+  // If we parsed to an object that contains clothing_analysis, unwrap it.
+  if (v && typeof v === 'object' && v.clothing_analysis !== undefined) {
+    let inner = v.clothing_analysis;
+    if (typeof inner === 'string') {
+      const parsedInner = safeJsonParse(inner);
+      if (parsedInner && typeof parsedInner === 'object') inner = parsedInner;
+    }
+    if (inner && typeof inner === 'object') return inner;
+  }
+
+  return v && typeof v === 'object' ? v : null;
+};
+
 // Detailed Item Modal - Shows ALL AI metadata
 const ItemDetailModal = ({ visible, item, onClose }) => {
   if (!item) return null;
@@ -39,16 +115,20 @@ const ItemDetailModal = ({ visible, item, onClose }) => {
       : `${API_BASE_URL}/${item.images[0].image_path}`)
     : null;
 
-  let metadata = null;
-  if (item.ai_metadata) {
+  const metadata = parseWardrobeMetadata(item.ai_metadata);
+
+  // Dev-only: log available keys so you can see what exists vs what UI renders
+  if (__DEV__ && metadata) {
     try {
-      metadata = typeof item.ai_metadata === 'string' ? JSON.parse(item.ai_metadata) : item.ai_metadata;
-      metadata = metadata.clothing_analysis || metadata;
-    } catch (e) { }
+      const keys = Object.keys(metadata).sort();
+      console.log('Wardrobe metadata keys:', keys);
+      console.log('Wardrobe metadata preview:', JSON.stringify(metadata).slice(0, 1200));
+    } catch {}
   }
 
   const styling = metadata?.styling_suggestions || {};
   const summaryBullets = toBulletHighlights(metadata?.summary_text, 2);
+  const summaryPoints = asArray(metadata?.summary_points);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -59,7 +139,7 @@ const ItemDetailModal = ({ visible, item, onClose }) => {
           <View style={styles.modalContent}>
             {/* Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>🤖 AI Analysis</Text>
+              <Text style={styles.modalTitle}>🤖 Style Analysis</Text>
               <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
@@ -68,7 +148,12 @@ const ItemDetailModal = ({ visible, item, onClose }) => {
             {/* Image */}
             {imageUrl && (
               <View style={styles.modalImageContainer}>
-                <Image source={{ uri: imageUrl }} style={styles.modalImage} resizeMode="contain" />
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={styles.modalImage}
+                  contentFit="contain"
+                  transition={200}
+                />
               </View>
             )}
 
@@ -89,6 +174,15 @@ const ItemDetailModal = ({ visible, item, onClose }) => {
                 <View style={styles.detailSection}>
                   <Text style={styles.sectionTitle}>🧵 Material & Fit</Text>
                   <DetailRow icon="🧶" label="Material" value={metadata.material} />
+                  {metadata.material_texture && (
+                    <View style={styles.detailRowFull}>
+                      <Text style={styles.detailIcon}>🪡</Text>
+                      <View style={styles.detailContent}>
+                        <Text style={styles.detailLabel}>Material Texture</Text>
+                        <Text style={styles.detailValueMultiline}>{metadata.material_texture}</Text>
+                      </View>
+                    </View>
+                  )}
                   <DetailRow icon="🔲" label="Pattern" value={metadata.pattern} />
                   {metadata.pattern_details && (
                     <DetailRow icon="🔍" label="Pattern Details" value={metadata.pattern_details} />
@@ -96,6 +190,18 @@ const ItemDetailModal = ({ visible, item, onClose }) => {
                   <DetailRow icon="📐" label="Fit Type" value={metadata.fit_type || metadata.fit} />
                   {metadata.texture && <DetailRow icon="✨" label="Texture" value={metadata.texture} />}
                 </View>
+
+                {/* Construction & Silhouette */}
+                {(metadata.neckline || metadata.collar_type || metadata.sleeve_type || metadata.length || metadata.closure_type) && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.sectionTitle}>🧷 Construction & Silhouette</Text>
+                    <DetailRow icon="👔" label="Neckline" value={toStringOrNull(metadata.neckline)} />
+                    <DetailRow icon="🧣" label="Collar Type" value={toStringOrNull(metadata.collar_type)} />
+                    <DetailRow icon="🧤" label="Sleeve Type" value={toStringOrNull(metadata.sleeve_type)} />
+                    <DetailRow icon="📏" label="Length" value={toStringOrNull(metadata.length)} />
+                    <DetailRow icon="🔘" label="Closure Type" value={toStringOrNull(metadata.closure_type)} />
+                  </View>
+                )}
 
                 {/* Style Details */}
                 <View style={styles.detailSection}>
@@ -166,62 +272,106 @@ const ItemDetailModal = ({ visible, item, onClose }) => {
                 {(styling.pairs_well_with || styling.accessories || styling.shoes || metadata.color_pairing_suggestions) && (
                   <View style={styles.detailSection}>
                     <Text style={styles.sectionTitle}>👔 Styling Suggestions</Text>
-                    {styling.pairs_well_with && Array.isArray(styling.pairs_well_with) && (
+                    <ListRow icon="👖" label="Pairs Well With" items={styling.pairs_well_with} />
+                    <ListRow icon="🧥" label="Layering Options" items={styling.layering_options} />
+                    <ListRow icon="💍" label="Accessories" items={styling.accessories} />
+                    <ListRow icon="👞" label="Footwear" items={styling.shoes} />
+                    <ListRow icon="🚫" label="Avoid Pairing With" items={styling.avoid_pairing_with} />
+                    <ListRow icon="🎨" label="Color Pairings" items={metadata.color_pairing_suggestions} />
+                  </View>
+                )}
+
+                {/* Description / Care / Indicators */}
+                {(metadata.description || metadata.care_observations || metadata.brand_style_indicators) && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.sectionTitle}>🧾 Notes</Text>
+                    {metadata.description && (
                       <View style={styles.detailRowFull}>
-                        <Text style={styles.detailIcon}>👖</Text>
+                        <Text style={styles.detailIcon}>📝</Text>
                         <View style={styles.detailContent}>
-                          <Text style={styles.detailLabel}>Pairs Well With</Text>
-                          <Text style={styles.detailValueMultiline}>{styling.pairs_well_with.join(', ')}</Text>
+                          <Text style={styles.detailLabel}>Description</Text>
+                          <Text style={styles.detailValueMultiline}>{metadata.description}</Text>
                         </View>
                       </View>
                     )}
-                    {styling.accessories && Array.isArray(styling.accessories) && (
+                    {metadata.brand_style_indicators && (
                       <View style={styles.detailRowFull}>
-                        <Text style={styles.detailIcon}>💍</Text>
+                        <Text style={styles.detailIcon}>🏷️</Text>
                         <View style={styles.detailContent}>
-                          <Text style={styles.detailLabel}>Accessories</Text>
-                          <Text style={styles.detailValueMultiline}>{styling.accessories.join(', ')}</Text>
+                          <Text style={styles.detailLabel}>Brand / Style Indicators</Text>
+                          <Text style={styles.detailValueMultiline}>{metadata.brand_style_indicators}</Text>
                         </View>
                       </View>
                     )}
-                    {styling.shoes && Array.isArray(styling.shoes) && (
+                    {metadata.care_observations && (
                       <View style={styles.detailRowFull}>
-                        <Text style={styles.detailIcon}>👞</Text>
+                        <Text style={styles.detailIcon}>🧼</Text>
                         <View style={styles.detailContent}>
-                          <Text style={styles.detailLabel}>Footwear</Text>
-                          <Text style={styles.detailValueMultiline}>{styling.shoes.join(', ')}</Text>
-                        </View>
-                      </View>
-                    )}
-                    {metadata.color_pairing_suggestions && Array.isArray(metadata.color_pairing_suggestions) && (
-                      <View style={styles.detailRowFull}>
-                        <Text style={styles.detailIcon}>🎨</Text>
-                        <View style={styles.detailContent}>
-                          <Text style={styles.detailLabel}>Color Pairings</Text>
-                          <Text style={styles.detailValueMultiline}>{metadata.color_pairing_suggestions.join(', ')}</Text>
+                          <Text style={styles.detailLabel}>Care</Text>
+                          <Text style={styles.detailValueMultiline}>{metadata.care_observations}</Text>
                         </View>
                       </View>
                     )}
                   </View>
                 )}
 
-                {/* AI Summary (short) */}
-                {summaryBullets.length > 0 && (
+                {/* AI Summary (full) */}
+                {(metadata.summary_text || summaryPoints.length > 0) && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.sectionTitle}>📝 Quick Summary</Text>
-                    {summaryBullets.map((b, idx) => (
-                      <Text key={idx} style={styles.summaryBullet}>• {b}</Text>
-                    ))}
+                    <Text style={styles.sectionTitle}>📝 Summary</Text>
+                    {summaryPoints.length > 0 ? (
+                      summaryPoints.map((p, idx) => (
+                        <Text key={idx} style={styles.summaryBullet}>• {String(p)}</Text>
+                      ))
+                    ) : (
+                      <>
+                        {summaryBullets.map((b, idx) => (
+                          <Text key={idx} style={styles.summaryBullet}>• {b}</Text>
+                        ))}
+                      </>
+                    )}
                   </View>
                 )}
               </>
             ) : (
               <View style={styles.noMetadataContainer}>
-                <Text style={styles.noMetadataText}>No AI analysis available yet</Text>
+                <Text style={styles.noMetadataText}>No analysis available yet</Text>
               </View>
             )}
           </View>
         </ScrollView>
+      </View>
+    </Modal>
+  );
+};
+
+// Fullscreen Image Preview Modal
+const ImagePreviewModal = ({ visible, imageUrl, onClose }) => {
+  if (!visible) return null;
+  return (
+    <Modal visible={visible} animationType="fade" onRequestClose={onClose} transparent={false}>
+      <View style={styles.imagePreviewContainer}>
+        <LinearGradient colors={[COLORS.background, COLORS.backgroundLight]} style={StyleSheet.absoluteFill} />
+        <View style={styles.imagePreviewHeader}>
+          <Text style={styles.imagePreviewTitle}>🖼️ Image</Text>
+          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <Text style={styles.closeButtonText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+        {imageUrl ? (
+          <View style={styles.imagePreviewBody}>
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.imagePreviewImage}
+              contentFit="contain"
+              transition={200}
+            />
+          </View>
+        ) : (
+          <View style={styles.noMetadataContainer}>
+            <Text style={styles.noMetadataText}>No image available</Text>
+          </View>
+        )}
       </View>
     </Modal>
   );
@@ -240,20 +390,14 @@ const DetailRow = ({ icon, label, value }) => {
 };
 
 // Wardrobe Item Card - Image + Details side by side
-const WardrobeItemCard = ({ item, onDelete, onProcess, processing, onViewDetails }) => {
+const WardrobeItemCard = ({ item, serialNo, onDelete, onProcess, processing, onViewDetails, onViewImage }) => {
   const imageUrl = item.images && item.images[0]
     ? (item.images[0].image_path.startsWith('http')
       ? item.images[0].image_path
       : `${API_BASE_URL}/${item.images[0].image_path}`)
     : null;
 
-  let metadata = null;
-  if (item.ai_metadata) {
-    try {
-      metadata = typeof item.ai_metadata === 'string' ? JSON.parse(item.ai_metadata) : item.ai_metadata;
-      metadata = metadata.clothing_analysis || metadata;
-    } catch (e) { }
-  }
+  const metadata = parseWardrobeMetadata(item.ai_metadata);
 
   const getStatusStyle = (status) => {
     switch (status) {
@@ -266,11 +410,26 @@ const WardrobeItemCard = ({ item, onDelete, onProcess, processing, onViewDetails
 
   const status = getStatusStyle(item.processing_status);
 
+  const colorVal = toStringOrNull(metadata?.color) || toStringOrNull(item?.color);
+  const styleVal = toStringOrNull(metadata?.style) || toStringOrNull(item?.style);
+  const materialVal = toStringOrNull(metadata?.material);
+
+  if (__DEV__ && metadata && !colorVal) {
+    try {
+      console.log('Wardrobe: metadata present but color missing', {
+        id: item?.id,
+        ai_metadata_type: typeof item?.ai_metadata,
+        ai_metadata_preview: typeof item?.ai_metadata === 'string' ? item.ai_metadata.slice(0, 220) : JSON.stringify(item?.ai_metadata).slice(0, 220),
+        keys: Object.keys(metadata || {}).slice(0, 50),
+      });
+    } catch {}
+  }
+
   // Prefer AI-detected garment type (e.g., "saree") over the DB enum (which may default to "other")
   const displayNameRaw =
     (metadata && (metadata.garment_type || metadata.garmentType)) ||
     item.dress_type ||
-    `Item #${item.id}`;
+    `Item ${serialNo || ''}`.trim();
   const displayName = String(displayNameRaw)
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -279,93 +438,79 @@ const WardrobeItemCard = ({ item, onDelete, onProcess, processing, onViewDetails
     <View style={styles.itemCard}>
       {/* Image Section */}
       <View style={styles.imageSection}>
-        {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.itemImage} resizeMode="cover" />
-        ) : (
-          <View style={styles.imagePlaceholder}>
-            <Text style={styles.placeholderIcon}>👕</Text>
-          </View>
-        )}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          style={{ flex: 1 }}
+          onPress={() => onViewImage?.(imageUrl)}
+          disabled={!imageUrl}
+        >
+          {imageUrl ? (
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.itemImage}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Text style={styles.placeholderIcon}>👕</Text>
+            </View>
+          )}
+        </TouchableOpacity>
         {/* Status Badge */}
         <View style={[styles.statusBadge, { backgroundColor: status.color }]}>
           <Text style={styles.statusIcon}>{status.icon}</Text>
         </View>
+        {/* Quick image expand affordance (tap to open fullscreen) */}
+        {imageUrl && (
+          <TouchableOpacity
+            style={styles.imageExpandBadge}
+            onPress={() => onViewImage?.(imageUrl)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.imageExpandText}>🔍</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Details Section */}
       <View style={styles.detailsSection}>
-        {/* Item Name */}
-        <Text style={styles.itemName} numberOfLines={1}>
-          {displayName}
-        </Text>
+        {/* Header row: title + delete */}
+        <View style={styles.cardHeaderRow}>
+          <TouchableOpacity onPress={() => onViewDetails?.(item)} activeOpacity={0.85} style={{ flex: 1 }}>
+            <Text style={styles.itemName} numberOfLines={1}>
+              {displayName}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.deleteButtonInline} onPress={() => onDelete(item.id)}>
+            <Text style={styles.deleteButtonText}>🗑️</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Status Text */}
         <Text style={[styles.statusText, { color: status.color }]}>{status.text}</Text>
 
-        {/* AI Details */}
+        {/* Compact metadata grid (won't be covered by buttons) */}
         {metadata ? (
-          <View style={styles.metadataContainer}>
-            {metadata.color && (
-              <View style={styles.metadataRow}>
-                <Text style={styles.metadataIcon}>🎨</Text>
-                <Text style={styles.metadataValue} numberOfLines={1}>{metadata.color}</Text>
-              </View>
-            )}
-            {metadata.style && (
-              <View style={styles.metadataRow}>
-                <Text style={styles.metadataIcon}>✨</Text>
-                <Text style={styles.metadataValue} numberOfLines={1}>{metadata.style}</Text>
-              </View>
-            )}
-            {metadata.material && (
-              <View style={styles.metadataRow}>
-                <Text style={styles.metadataIcon}>🧵</Text>
-                <Text style={styles.metadataValue} numberOfLines={1}>{metadata.material}</Text>
-              </View>
-            )}
-            {(metadata.fit_type || metadata.fit) && (
-              <View style={styles.metadataRow}>
-                <Text style={styles.metadataIcon}>📐</Text>
-                <Text style={styles.metadataValue} numberOfLines={1}>{metadata.fit_type || metadata.fit}</Text>
-              </View>
-            )}
-            {metadata.formality_level && (
-              <View style={styles.metadataRow}>
-                <Text style={styles.metadataIcon}>📊</Text>
-                <Text style={styles.metadataValue}>Formality: {metadata.formality_level}/10</Text>
-              </View>
-            )}
-            {metadata.versatility_score && (
-              <View style={styles.metadataRow}>
-                <Text style={styles.metadataIcon}>🔄</Text>
-                <Text style={styles.metadataValue}>Versatility: {metadata.versatility_score}/10</Text>
-              </View>
-            )}
-            {metadata.occasion && (
-              <View style={styles.tagsRow}>
-                {(Array.isArray(metadata.occasion) ? metadata.occasion : [metadata.occasion]).map((occ, idx) => (
-                  <View key={idx} style={styles.tagChip}>
-                    <Text style={styles.tagText}>{occ}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* View Full Details Button */}
-            <TouchableOpacity
-              style={styles.viewDetailsButton}
-              onPress={() => onViewDetails(item)}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={COLORS.gradients.accent}
-                style={styles.viewDetailsGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Text style={styles.viewDetailsText}>👁️ View Full AI Analysis →</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+          <View style={styles.metaGrid}>
+            {colorVal ? (
+              <View style={styles.metaPill}><Text style={styles.metaPillText}>🎨 {colorVal}</Text></View>
+            ) : null}
+            {styleVal ? (
+              <View style={styles.metaPill}><Text style={styles.metaPillText}>✨ {styleVal}</Text></View>
+            ) : null}
+            {materialVal ? (
+              <View style={styles.metaPill}><Text style={styles.metaPillText}>🧵 {materialVal}</Text></View>
+            ) : null}
+            {(metadata.fit_type || metadata.fit) ? (
+              <View style={styles.metaPill}><Text style={styles.metaPillText}>📐 {metadata.fit_type || metadata.fit}</Text></View>
+            ) : null}
+            {metadata.formality_level ? (
+              <View style={styles.metaPill}><Text style={styles.metaPillText}>📊 Formality {metadata.formality_level}/10</Text></View>
+            ) : null}
+            {metadata.versatility_score ? (
+              <View style={styles.metaPill}><Text style={styles.metaPillText}>🔄 Versatility {metadata.versatility_score}/10</Text></View>
+            ) : null}
           </View>
         ) : item.processing_status === 'pending' ? (
           <TouchableOpacity
@@ -379,10 +524,37 @@ const WardrobeItemCard = ({ item, onDelete, onProcess, processing, onViewDetails
           <Text style={styles.noDataText}>No details yet</Text>
         )}
 
-        {/* Delete Button */}
-        <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(item.id)}>
-          <Text style={styles.deleteButtonText}>🗑️</Text>
-        </TouchableOpacity>
+        {/* Footer actions */}
+        <View style={styles.cardFooterRow}>
+          {item.processing_status === 'completed' ? (
+            <TouchableOpacity
+              style={styles.viewDetailsButtonPinned}
+              onPress={() => onViewDetails?.(item)}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={COLORS.gradients.accent}
+                style={styles.viewDetailsGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.viewDetailsText}>👁️ Full Analysis</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          ) : (
+            <View />
+          )}
+
+          {imageUrl && (
+            <TouchableOpacity
+              style={styles.viewImageButton}
+              onPress={() => onViewImage?.(imageUrl)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.viewImageText}>🖼️ View</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -395,13 +567,32 @@ export default function WardrobeScreen() {
   const [processing, setProcessing] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState(null);
+  const pollIntervalRef = useRef(null);
+  const pollTimeoutRef = useRef(null);
 
   const handleViewDetails = (item) => {
     setSelectedItem(item);
     setShowDetailModal(true);
   };
 
+  const handleViewImage = (imageUrl) => {
+    if (!imageUrl) return;
+    setSelectedImageUrl(imageUrl);
+    setShowImageModal(true);
+  };
+
   useEffect(() => { loadItems(); }, []);
+
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      pollIntervalRef.current = null;
+      pollTimeoutRef.current = null;
+    };
+  }, []);
 
   const loadItems = async (showLoading = true) => {
     try {
@@ -458,9 +649,9 @@ export default function WardrobeScreen() {
               // Constrain max dimension to 1200px to ensure file size is small enough
               let resizeAction = {};
               if (asset.width > asset.height) {
-                if (asset.width > 1200) resizeAction = { width: 1200 };
+                if (asset.width > 1024) resizeAction = { width: 1024 };
               } else {
-                if (asset.height > 1200) resizeAction = { height: 1200 };
+                if (asset.height > 1024) resizeAction = { height: 1024 };
               }
 
               const actions = Object.keys(resizeAction).length > 0 ? [{ resize: resizeAction }] : [];
@@ -469,7 +660,7 @@ export default function WardrobeScreen() {
               const manipulated = await ImageManipulator.manipulateAsync(
                 asset.uri,
                 actions,
-                { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+                { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
               );
 
               return {
@@ -516,13 +707,15 @@ export default function WardrobeScreen() {
       const successCount = results.reduce((a, b) => a + b, 0);
 
       if (successCount > 0) {
-        Alert.alert('✨ Success', `${successCount} item(s) added!`);
+        // Alert.alert('✨ Success', `${successCount} item(s) added!`);
         loadItems(false);
       } else if (assets.length > 0) {
         Alert.alert('Error', 'Failed to upload items');
       }
     } catch (error) {
-      if (error?.response?.status !== 401) {
+      if (error?.response?.status === 409) {
+        Alert.alert('Duplicate Detected', 'One or more items have already been uploaded.');
+      } else if (error?.response?.status !== 401) {
         Alert.alert('Error', 'Failed to upload');
       }
     } finally {
@@ -533,14 +726,19 @@ export default function WardrobeScreen() {
   const handleProcessAll = async () => {
     const pendingItems = items.filter(item => item.processing_status === 'pending');
     if (pendingItems.length === 0) {
-      Alert.alert('Info', 'All items are already analyzed');
+      // Alert.alert('Info', 'All items are already analyzed');
       return;
     }
 
     try {
       setProcessing(true);
       await aiProcessingAPI.processAllWardrobe();
-      Alert.alert('🤖 Processing', 'AI is analyzing your wardrobe...');
+      // Alert.alert('🤖 Processing', 'Analyzing your wardrobe...');
+
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      pollIntervalRef.current = null;
+      pollTimeoutRef.current = null;
 
       const checkStatus = setInterval(async () => {
         const data = await wardrobeAPI.getItems();
@@ -549,17 +747,21 @@ export default function WardrobeScreen() {
         );
         if (allCompleted) {
           clearInterval(checkStatus);
+          pollIntervalRef.current = null;
           setProcessing(false);
           setItems(data);
-          Alert.alert('✅ Complete', 'AI analysis finished!');
+          // Alert.alert('✅ Complete', 'Analysis finished!');
         }
       }, 2000);
+      pollIntervalRef.current = checkStatus;
 
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         clearInterval(checkStatus);
+        pollIntervalRef.current = null;
         setProcessing(false);
         loadItems(false);
       }, 60000);
+      pollTimeoutRef.current = timeoutId;
 
     } catch (error) {
       setProcessing(false);
@@ -574,21 +776,30 @@ export default function WardrobeScreen() {
       setProcessing(true);
       await aiProcessingAPI.processWardrobe(itemId);
 
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      pollIntervalRef.current = null;
+      pollTimeoutRef.current = null;
+
       const checkStatus = setInterval(async () => {
         const data = await wardrobeAPI.getItems();
         const item = data.find(i => i.id === itemId);
         if (item && item.processing_status === 'completed') {
           clearInterval(checkStatus);
+          pollIntervalRef.current = null;
           setProcessing(false);
           setItems(data);
         }
       }, 2000);
+      pollIntervalRef.current = checkStatus;
 
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         clearInterval(checkStatus);
+        pollIntervalRef.current = null;
         setProcessing(false);
         loadItems(false);
       }, 30000);
+      pollTimeoutRef.current = timeoutId;
 
     } catch (error) {
       setProcessing(false);
@@ -641,6 +852,11 @@ export default function WardrobeScreen() {
         visible={showDetailModal}
         item={selectedItem}
         onClose={() => setShowDetailModal(false)}
+      />
+      <ImagePreviewModal
+        visible={showImageModal}
+        imageUrl={selectedImageUrl}
+        onClose={() => setShowImageModal(false)}
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -720,7 +936,7 @@ export default function WardrobeScreen() {
               <Text style={styles.emptyEmoji}>👕</Text>
               <Text style={styles.emptyTitle}>Your wardrobe is empty</Text>
               <Text style={styles.emptyText}>
-                Add photos of your clothes to get started with AI styling!
+                Add photos of your clothes to get started with smart styling!
               </Text>
             </View>
           ) : (
@@ -729,10 +945,12 @@ export default function WardrobeScreen() {
                 <View key={item.id} style={styles.itemWrapper}>
                   <WardrobeItemCard
                     item={item}
+                    serialNo={items.findIndex(i => i.id === item.id) + 1}
                     onDelete={deleteItem}
                     onProcess={handleProcessItem}
                     processing={processing}
                     onViewDetails={handleViewDetails}
+                    onViewImage={handleViewImage}
                   />
                 </View>
               ))}
@@ -742,10 +960,10 @@ export default function WardrobeScreen() {
       </ScrollView>
 
       <FlowNavBar
-        prev={{ route: 'UserImages', label: 'Back: Photos', icon: '📸', enabled: true }}
+        prev={{ route: 'Me', label: 'Back: Me', icon: '🧑', enabled: true }}
         next={{
           route: 'Recommendations',
-          label: analyzedCount >= 2 ? 'Next: Style AI' : 'Analyze 2 items first',
+          label: analyzedCount >= 2 ? 'Next: Style Studio' : 'Analyze 2 items first',
           icon: '✨',
           enabled: analyzedCount >= 2,
         }}
@@ -816,7 +1034,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: COLORS.border,
-    height: 180, // Fixed height for consistency
+    minHeight: 180,
   },
 
   // Image Section
@@ -851,12 +1069,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)', // Fallback
   },
   statusIcon: { fontSize: 14 },
+  imageExpandBadge: {
+    position: 'absolute',
+    bottom: SPACING.sm,
+    left: SPACING.sm,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  imageExpandText: { fontSize: 14 },
 
   // Details Section
   detailsSection: {
     flex: 1,
     padding: SPACING.md,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
   },
   itemName: {
     fontSize: 16,
@@ -871,20 +1101,44 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
 
-  // Metadata
-  metadataContainer: {
-    flex: 1,
-  },
-  metadataRow: {
+  // Card header/footer layout
+  cardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    gap: 8,
   },
-  metadataIcon: { fontSize: 14, marginRight: 6 },
-  metadataValue: {
-    fontSize: 13,
+  deleteButtonInline: {
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  cardFooterRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+
+  // Compact metadata pills
+  metaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+  },
+  metaPill: {
+    backgroundColor: COLORS.surfaceLight,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  metaPillText: {
+    fontSize: 12,
     color: COLORS.textSecondary,
-    flex: 1,
+    fontWeight: '600',
     textTransform: 'capitalize',
   },
 
@@ -932,13 +1186,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Delete Button
-  deleteButton: {
-    position: 'absolute',
-    bottom: SPACING.sm,
-    right: SPACING.sm,
-    padding: 8,
-  },
   deleteButtonText: { fontSize: 16 },
 
   // View Details Button - Make it smaller/abs positioned or inline? 
@@ -949,6 +1196,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
     alignSelf: 'flex-start',
   },
+  viewDetailsButtonPinned: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    marginRight: 44, // keep clear of delete button at bottom-right
+  },
   viewDetailsGradient: {
     paddingVertical: 4,
     paddingHorizontal: 10,
@@ -958,6 +1210,51 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textPrimary,
     fontWeight: '700',
+  },
+
+  viewImageButton: {
+    backgroundColor: COLORS.surfaceLight,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  viewImageText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+
+  // Image preview modal
+  imagePreviewContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    padding: SPACING.lg,
+    paddingTop: SPACING.xl,
+  },
+  imagePreviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  imagePreviewTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+  },
+  imagePreviewBody: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.xl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  imagePreviewImage: {
+    width: '100%',
+    height: '100%',
   },
 
   // Detail Modal

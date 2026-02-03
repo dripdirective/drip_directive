@@ -37,7 +37,10 @@ class Settings(BaseSettings):
         "http://localhost:19006,"
         "http://127.0.0.1:19006,"
         "http://localhost:3000,"
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000,"
+        "http://192.168.0.105:8081,"
+        "exp://*,"
+        "*"
     )
 
     # File Upload
@@ -63,6 +66,14 @@ class Settings(BaseSettings):
     # OpenAI: gpt-4o-mini (text+vision), dall-e-3 (image generation)
     LLM_MODEL: str = "gemini-2.0-flash"
     IMAGE_MODEL: str = "gemini-2.0-flash-exp"
+    # Optional: use a dedicated vision-capable model for image analysis when LLM_MODEL is text-only.
+    # Example: OPENAI_VISION_MODEL=gpt-4o-mini
+    OPENAI_VISION_MODEL: Optional[str] = None
+    # Optional: fallback vision model when the primary vision model returns empty/invalid output.
+    # Example: OPENAI_VISION_FALLBACK_MODEL=gpt-4o-mini
+    OPENAI_VISION_FALLBACK_MODEL: Optional[str] = "gpt-4o-mini"
+    # If true, retry vision calls once with OPENAI_VISION_FALLBACK_MODEL on empty/invalid output.
+    OPENAI_VISION_ENABLE_FALLBACK: bool = True
     
     # Legacy (for backwards compatibility)
     TRYON_MODEL: str = "gemini-2.0-flash-exp"

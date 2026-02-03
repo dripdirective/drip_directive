@@ -60,11 +60,11 @@ export default function SignupScreen({ navigation }) {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      
+
       {/* Decorative Circles */}
       <View style={styles.decorCircle1} />
       <View style={styles.decorCircle2} />
-      
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -105,7 +105,7 @@ export default function SignupScreen({ navigation }) {
             {/* Signup Form */}
             <View style={styles.formCard}>
               <Text style={styles.welcomeText}>Create Account 🎉</Text>
-              
+
               <View style={styles.inputContainer}>
                 <Text style={styles.inputIcon}>📧</Text>
                 <TextInput
@@ -170,7 +170,7 @@ export default function SignupScreen({ navigation }) {
               <View style={styles.features}>
                 <View style={styles.featureItem}>
                   <Text style={styles.featureIcon}>🤖</Text>
-                  <Text style={styles.featureText}>AI Style Analysis</Text>
+                  <Text style={styles.featureText}>Smart Style Analysis</Text>
                 </View>
                 <View style={styles.featureItem}>
                   <Text style={styles.featureIcon}>👗</Text>
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 13,
   },
-  
+
   // Decorative Elements
   decorCircle1: {
     position: 'absolute',
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     opacity: 0.1,
   },
-  
+
   // Header
   header: {
     alignItems: 'center',
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.textSecondary,
   },
-  
+
   // Form Card
   formCard: {
     backgroundColor: COLORS.backgroundGlass,
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
     textAlign: 'center',
   },
-  
+
   // Input
   inputContainer: {
     flexDirection: 'row',
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.textPrimary,
   },
-  
+
   // Button
   button: {
     borderRadius: BORDER_RADIUS.lg,
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
-  
+
   // Features
   features: {
     flexDirection: 'row',
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     textAlign: 'center',
   },
-  
+
   // Divider
   divider: {
     flexDirection: 'row',
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     fontSize: 14,
   },
-  
+
   // Secondary Button
   secondaryButton: {
     alignItems: 'center',

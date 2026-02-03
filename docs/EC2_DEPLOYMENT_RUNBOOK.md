@@ -89,6 +89,8 @@ mkdir -p ~/drip_release/backend
 cd ~/drip_release/backend
 
 aws s3 cp "s3://drip-directive/releases/drip_directive_backend.zip" ./drip_directive_backend.zip --region ap-south-1
+aws s3 cp "s3://drip-directive/releases/dripdirective-backend-ec2.zip" "dripdirective-backend-ec2.zip"
+
 unzip -o drip_directive_backend.zip
 ls
 ```

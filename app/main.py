@@ -11,6 +11,8 @@ from app.database import engine, Base, get_db
 from app.routers import auth, users, images, wardrobe, ai_processing, recommendations
 from app.config import settings
 from app.core.vector_store import get_vector_store
+from app.middleware.validation import setup_validation
+from app.middleware.rate_limit import setup_rate_limiting
 import os
 
 app = FastAPI(title="Dripdirective API", version="1.0.0")
@@ -79,6 +81,22 @@ async def cors_debug_middleware(request: Request, call_next):
 # Exception handler for validation errors to see what's failing
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    def _json_safe(value):
+        """Recursively convert non-JSON-serializable values (e.g., bytes) to strings."""
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        if isinstance(value, (bytes, bytearray)):
+            try:
+                return value.decode("utf-8", errors="replace")
+            except Exception:
+                return repr(value)
+        if isinstance(value, dict):
+            return {str(k): _json_safe(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [_json_safe(v) for v in value]
+        # Fallback: stringify
+        return str(value)
+
     # Log validation errors for debugging
     print(f"\n{'='*60}")
     print(f"❌ VALIDATION ERROR (422)")
@@ -91,8 +109,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
-            "detail": exc.errors(),
-            "body": str(exc.body) if hasattr(exc, 'body') and exc.body else None
+            # exc.errors() can contain bytes under "input" -> must sanitize
+            "detail": _json_safe(exc.errors()),
+            "body": _json_safe(getattr(exc, "body", None)),
         }
     )
 
@@ -103,10 +122,15 @@ print(f"🔧 Configuring CORS with origins: {cors_origins}")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins if cors_origins else [],
-    allow_credentials=False,
+    # Credentials are only valid with explicit origins (not "*")
+    allow_credentials=("*" not in (cors_origins or [])),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Security middleware (validation + rate limiting)
+setup_validation(app)
+setup_rate_limiting(app)
 
 # Mount static files for serving images
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

@@ -24,6 +24,8 @@ class Token(BaseModel):
 class UserProfileBase(BaseModel):
     name: Optional[str] = None
     gender: Optional[str] = None
+    age: Optional[int] = None
+    marital_status: Optional[str] = None
     height: Optional[float] = None
     weight: Optional[float] = None
     body_type: Optional[BodyType] = None
@@ -45,6 +47,7 @@ class UserProfileUpdate(UserProfileBase):
 class UserProfileResponse(UserProfileBase):
     id: int
     user_id: int
+    profile_summary_text: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime]
 
@@ -90,6 +93,7 @@ class WardrobeItemCreate(WardrobeItemBase):
 class WardrobeItemResponse(WardrobeItemBase):
     id: int
     user_id: int
+    item_summary_text: Optional[str] = None
     ai_metadata: Optional[str] = None
     processing_status: ProcessingStatus
     created_at: datetime
@@ -140,6 +144,14 @@ class RecommendationRequest(BaseModel):
 class TryOnRequest(BaseModel):
     outfit_index: int
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
+
 
 class TryOnResponse(BaseModel):
     image_path: Optional[str] = None
@@ -157,6 +169,10 @@ class OutfitResponse(BaseModel):
     occasion: Optional[str] = None
     description: Optional[str] = None
     why_it_works: Optional[str] = None
+    style_reasoning: Optional[str] = None
+    missing_items: List[str] = []
+    confidence_score: Optional[float] = None
+    occasion_suitability: Optional[int] = None
     styling_tips: Optional[List[str]] = None
     items: List[OutfitItem] = []
     wardrobe_item_ids: List[int] = []
@@ -209,6 +225,10 @@ class RecommendationResponse(BaseModel):
                         occasion=outfit.get("best_for", metadata.get("occasion_detected")),
                         description=outfit.get("items_description", ""),
                         why_it_works=outfit.get("why_it_works"),
+                        style_reasoning=outfit.get("style_reasoning"),
+                        missing_items=outfit.get("missing_items", []),
+                        confidence_score=outfit.get("confidence_score"),
+                        occasion_suitability=outfit.get("occasion_suitability"),
                         styling_tips=outfit.get("styling_tips") if isinstance(outfit.get("styling_tips"), list) else None,
                         items=items,
                         wardrobe_item_ids=item_ids,

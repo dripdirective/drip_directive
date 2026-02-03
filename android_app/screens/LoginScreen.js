@@ -49,17 +49,17 @@ export default function LoginScreen({ navigation }) {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      
+
       {/* Decorative Circles */}
       <View style={styles.decorCircle1} />
       <View style={styles.decorCircle2} />
       <View style={styles.decorCircle3} />
-      
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={styles.content}>
             <View style={styles.topNavRow}>
               {navigation.canGoBack() ? (
@@ -93,13 +93,41 @@ export default function LoginScreen({ navigation }) {
                 </LinearGradient>
               </View>
               <Text style={styles.title}>Dripdirective</Text>
-              <Text style={styles.subtitle}>Your AI-Powered Style Companion</Text>
+              <Text style={styles.subtitle}>Your Smart Style Companion</Text>
+            </View>
+
+            {/* Elegant value proposition */}
+            <View style={styles.pitchCard}>
+              <View style={styles.pitchTopRow}>
+                <Text style={styles.pitchTitle}>Build your style profile</Text>
+                <View style={styles.pitchPill}>
+                  <Text style={styles.pitchPillText}>3‑min setup</Text>
+                </View>
+              </View>
+              <Text style={styles.pitchSubtitle}>
+                Your <Text style={styles.pitchBold}>personal fashion stylist</Text> — understand your body & style, then get outfit ideas from your own wardrobe.
+              </Text>
+
+              <View style={styles.pitchBullets}>
+                <View style={styles.pitchBulletRow}>
+                  <Text style={styles.pitchBulletIcon}>✨</Text>
+                  <Text style={styles.pitchBulletText}>Understand your body & style</Text>
+                </View>
+                <View style={styles.pitchBulletRow}>
+                  <Text style={styles.pitchBulletIcon}>🧥</Text>
+                  <Text style={styles.pitchBulletText}>No mannequin needed</Text>
+                </View>
+                <View style={styles.pitchBulletRow}>
+                  <Text style={styles.pitchBulletIcon}>⚡</Text>
+                  <Text style={styles.pitchBulletText}>Recommendations in minutes</Text>
+                </View>
+              </View>
             </View>
 
             {/* Login Form */}
             <View style={styles.formCard}>
               <Text style={styles.welcomeText}>Welcome Back! ✨</Text>
-              
+
               <View style={styles.inputContainer}>
                 <Text style={styles.inputIcon}>📧</Text>
                 <TextInput
@@ -128,10 +156,17 @@ export default function LoginScreen({ navigation }) {
               </View>
 
               <TouchableOpacity
+                style={styles.forgotPassword}
+                onPress={() => navigation.navigate('ForgotPassword')}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={[styles.button, loading && styles.buttonDisabled]}
                 onPress={handleLogin}
                 disabled={loading}
-                activeOpacity={0.8}
+                activeOpacity={0.6}
               >
                 <LinearGradient
                   colors={loading ? [COLORS.surfaceLight, COLORS.surface] : COLORS.gradients.primary}
@@ -142,7 +177,7 @@ export default function LoginScreen({ navigation }) {
                   {loading ? (
                     <ActivityIndicator color={COLORS.textPrimary} />
                   ) : (
-                    <Text style={styles.buttonText}>Sign In →</Text>
+                    <Text style={styles.buttonText}>Login</Text>
                   )}
                 </LinearGradient>
               </TouchableOpacity>
@@ -163,10 +198,10 @@ export default function LoginScreen({ navigation }) {
                 </Text>
               </TouchableOpacity>
             </View>
-            
+
             {/* Footer */}
             <Text style={styles.footerText}>
-              Powered by AI • Made with 💜
+              Powered by Intelligence • Made with 💜
             </Text>
           </View>
         </ScrollView>
@@ -208,7 +243,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 13,
   },
-  
+
   // Decorative Elements
   decorCircle1: {
     position: 'absolute',
@@ -240,11 +275,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.secondary,
     opacity: 0.08,
   },
-  
+
   // Header
   header: {
     alignItems: 'center',
-    marginBottom: SPACING.xxxl,
+    marginBottom: SPACING.xl,
   },
   logoContainer: {
     marginBottom: SPACING.lg,
@@ -273,7 +308,58 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     letterSpacing: 0.5,
   },
-  
+
+  // Pitch card
+  pitchCard: {
+    backgroundColor: COLORS.backgroundGlass,
+    borderRadius: BORDER_RADIUS.xxl,
+    padding: SPACING.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: SPACING.xl,
+  },
+  pitchTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  pitchTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.2,
+    flex: 1,
+  },
+  pitchPill: {
+    backgroundColor: COLORS.primary + '22',
+    borderWidth: 1,
+    borderColor: COLORS.primary + '55',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  pitchPillText: {
+    color: COLORS.textPrimary,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  pitchSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  pitchBold: {
+    color: COLORS.textPrimary,
+    fontWeight: '900',
+  },
+  pitchBullets: { marginTop: SPACING.lg, gap: 10 },
+  pitchBulletRow: { flexDirection: 'row', alignItems: 'center' },
+  pitchBulletIcon: { width: 22, fontSize: 14, marginRight: 10 },
+  pitchBulletText: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '700' },
+
   // Form Card
   formCard: {
     backgroundColor: COLORS.backgroundGlass,
@@ -290,7 +376,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
     textAlign: 'center',
   },
-  
+
   // Input
   inputContainer: {
     flexDirection: 'row',
@@ -312,7 +398,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.textPrimary,
   },
-  
+
+  // Forgot Password
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginBottom: SPACING.md,
+  },
+  forgotPasswordText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
   // Button
   button: {
     borderRadius: BORDER_RADIUS.lg,
@@ -335,7 +432,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-  
+
   // Divider
   divider: {
     flexDirection: 'row',
@@ -352,7 +449,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     fontSize: 14,
   },
-  
+
   // Secondary Button
   secondaryButton: {
     alignItems: 'center',
@@ -366,7 +463,7 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontWeight: '700',
   },
-  
+
   // Footer
   footerText: {
     textAlign: 'center',

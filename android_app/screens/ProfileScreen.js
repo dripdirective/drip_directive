@@ -35,11 +35,12 @@ const FACE_TONES = [
 
 const COUNTRIES = [
   { value: '', label: 'Select country', icon: '🌍' },
-  { value: 'india', label: 'India', icon: '🇮🇳' },
-  { value: 'united_states', label: 'United States', icon: '🇺🇸' },
-  { value: 'united_kingdom', label: 'United Kingdom', icon: '🇬🇧' },
   { value: 'canada', label: 'Canada', icon: '🇨🇦' },
+  { value: 'india', label: 'India', icon: '🇮🇳' },
+  { value: 'united_kingdom', label: 'United Kingdom', icon: '🇬🇧' },
+  { value: 'united_states', label: 'United States', icon: '🇺🇸' },
 ];
+
 
 const STATES_BY_COUNTRY = {
   india: [
@@ -141,19 +142,19 @@ const STATES_BY_COUNTRY = {
     { value: '', label: 'Select region', icon: '📍' },
     // Nations
     { value: 'england', label: 'England', icon: '📍' },
+    { value: 'northern_ireland', label: 'Northern Ireland', icon: '📍' },
     { value: 'scotland', label: 'Scotland', icon: '📍' },
     { value: 'wales', label: 'Wales', icon: '📍' },
-    { value: 'northern_ireland', label: 'Northern Ireland', icon: '📍' },
-    // Major regions (England)
+    // Major regions (England) - Sorted
+    { value: 'east_midlands', label: 'East Midlands', icon: '📍' },
+    { value: 'east_of_england', label: 'East of England', icon: '📍' },
     { value: 'london', label: 'London', icon: '📍' },
+    { value: 'north_east', label: 'North East', icon: '📍' },
+    { value: 'north_west', label: 'North West', icon: '📍' },
     { value: 'south_east', label: 'South East', icon: '📍' },
     { value: 'south_west', label: 'South West', icon: '📍' },
-    { value: 'east_of_england', label: 'East of England', icon: '📍' },
     { value: 'west_midlands', label: 'West Midlands', icon: '📍' },
-    { value: 'east_midlands', label: 'East Midlands', icon: '📍' },
     { value: 'yorkshire_and_the_humber', label: 'Yorkshire and the Humber', icon: '📍' },
-    { value: 'north_west', label: 'North West', icon: '📍' },
-    { value: 'north_east', label: 'North East', icon: '📍' },
   ],
   canada: [
     { value: '', label: 'Select province/territory', icon: '📍' },
@@ -181,7 +182,10 @@ const OCCUPATIONS = [
   { value: 'software_engineer', label: 'Software Engineer', icon: '🧑‍💻' },
   { value: 'business', label: 'Business / Entrepreneur', icon: '📈' },
   { value: 'marketing', label: 'Marketing', icon: '📣' },
-  { value: 'designer', label: 'Designer', icon: '🎨' },
+  { value: 'fashion_designer', label: 'Fashion Designer', icon: '👗' },
+  { value: 'model', label: 'Model', icon: '📸' },
+  { value: 'influencer', label: 'Influencer', icon: '🤳' },
+  // { value: 'designer', label: 'Designer (Other)', icon: '🎨' },  <-- Removed as requested
   { value: 'doctor', label: 'Doctor', icon: '🩺' },
   { value: 'teacher', label: 'Teacher', icon: '📚' },
   { value: 'sales', label: 'Sales', icon: '🤝' },
@@ -195,6 +199,21 @@ const GENDERS = [
   { value: 'female', label: 'Female', icon: '👩' },
   { value: 'non-binary', label: 'Non-binary', icon: '🧑‍🤝‍🧑' },
   { value: 'prefer_not_to_say', label: 'Prefer not to say', icon: '🤐' },
+];
+
+const MARITAL_STATUSES = [
+  { value: '', label: 'Select status', icon: '💍' },
+  { value: 'single', label: 'Single', icon: '👤' },
+  { value: 'married', label: 'Married', icon: '💑' },
+  { value: 'divorced', label: 'Divorced', icon: '💔' },
+  { value: 'widowed', label: 'Widowed', icon: '🕯️' },
+  { value: 'prefer_not_to_say', label: 'Prefer not to say', icon: '🤐' },
+];
+
+const STYLE_TAGS = [
+  "Minimalist", "Streetwear", "Vintage", "Bohemian", "Classic",
+  "Preppy", "Edgy", "Comfort First", "Bright Colors", "Neutral Tones",
+  "Modest", "Sustainable", "Luxury", "Athleisure"
 ];
 
 const safeJsonParse = (value) => {
@@ -226,11 +245,11 @@ const extractUserStyleText = (additionalInfoObj) => {
 const CustomSelect = ({ label, icon, options, value, onChange }) => {
   const [isOpen, setIsOpen] = useState(false);
   const selectedOption = options.find(o => o.value === value) || options[0];
-  
+
   return (
     <View style={styles.selectContainer}>
       <Text style={styles.label}>{icon} {label}</Text>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.selectButton}
         onPress={() => setIsOpen(!isOpen)}
         activeOpacity={0.8}
@@ -240,32 +259,34 @@ const CustomSelect = ({ label, icon, options, value, onChange }) => {
         </Text>
         <Text style={styles.selectArrow}>{isOpen ? '▲' : '▼'}</Text>
       </TouchableOpacity>
-      
+
       {isOpen && (
         <View style={styles.optionsContainer}>
-          {options.map((option) => (
-            <TouchableOpacity
-              key={option.value}
-              style={[
-                styles.optionItem,
-                value === option.value && styles.optionItemSelected
-              ]}
-              onPress={() => {
-                onChange(option.value);
-                setIsOpen(false);
-              }}
-            >
-              <Text style={[
-                styles.optionText,
-                value === option.value && styles.optionTextSelected
-              ]}>
-                {option.icon} {option.label}
-              </Text>
-              {value === option.value && (
-                <Text style={styles.checkmark}>✓</Text>
-              )}
-            </TouchableOpacity>
-          ))}
+          <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
+            {options.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.optionItem,
+                  value === option.value && styles.optionItemSelected
+                ]}
+                onPress={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+              >
+                <Text style={[
+                  styles.optionText,
+                  value === option.value && styles.optionTextSelected
+                ]}>
+                  {option.icon} {option.label}
+                </Text>
+                {value === option.value && (
+                  <Text style={styles.checkmark}>✓</Text>
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
       )}
     </View>
@@ -279,6 +300,8 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState({
     name: '',
     gender: '',
+    age: '',
+    marital_status: '',
     height: '',
     weight: '',
     body_type: '',
@@ -323,6 +346,8 @@ export default function ProfileScreen() {
       setProfile({
         name: data.name || '',
         gender: data.gender || '',
+        age: data.age?.toString() || '',
+        marital_status: data.marital_status || '',
         height: data.height?.toString() || '',
         weight: data.weight?.toString() || '',
         body_type: data.body_type || '',
@@ -336,6 +361,8 @@ export default function ProfileScreen() {
       const snap = {
         name: data.name || '',
         gender: data.gender || '',
+        age: data.age?.toString() || '',
+        marital_status: data.marital_status || '',
         height: data.height?.toString() || '',
         weight: data.weight?.toString() || '',
         body_type: data.body_type || '',
@@ -352,6 +379,8 @@ export default function ProfileScreen() {
         setInitialSnapshot({
           name: '',
           gender: '',
+          age: '',
+          marital_status: '',
           height: '',
           weight: '',
           body_type: '',
@@ -404,6 +433,7 @@ export default function ProfileScreen() {
 
       const profileData = {
         ...profile,
+        age: profile.age ? parseInt(profile.age) : null,
         height: profile.height ? parseFloat(profile.height) : null,
         weight: profile.weight ? parseFloat(profile.weight) : null,
         additional_info: additionalInfoToSave,
@@ -416,10 +446,10 @@ export default function ProfileScreen() {
 
       if (isNew) {
         await profileAPI.createProfile(profileData);
-        Alert.alert('Success', 'Profile created successfully');
+        // Alert.alert('Success', 'Profile created successfully');
       } else {
         await profileAPI.updateProfile(profileData);
-        Alert.alert('Success', 'Profile updated successfully');
+        // Alert.alert('Success', 'Profile updated successfully');
       }
       setIsNew(false);
       setLastSavedAt(Date.now());
@@ -454,7 +484,7 @@ export default function ProfileScreen() {
         colors={[COLORS.background, COLORS.backgroundLight]}
         style={StyleSheet.absoluteFill}
       />
-      
+
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
           {/* Header */}
@@ -476,6 +506,21 @@ export default function ProfileScreen() {
                   placeholderTextColor={COLORS.textMuted}
                   value={profile.name}
                   onChangeText={(text) => setProfile({ ...profile, name: text })}
+                />
+              </View>
+            </View>
+
+            {/* Age */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>🎂 Age</Text>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. 25"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={profile.age}
+                  onChangeText={(text) => setProfile({ ...profile, age: text })}
+                  keyboardType="numeric"
                 />
               </View>
             </View>
@@ -518,6 +563,15 @@ export default function ProfileScreen() {
               options={GENDERS}
               value={profile.gender}
               onChange={(value) => setProfile({ ...profile, gender: value })}
+            />
+
+            {/* Marital Status */}
+            <CustomSelect
+              label="Marital Status"
+              icon="💍"
+              options={MARITAL_STATUSES}
+              value={profile.marital_status}
+              onChange={(value) => setProfile({ ...profile, marital_status: value })}
             />
 
             {/* Body Type - Custom Select */}
@@ -606,6 +660,26 @@ export default function ProfileScreen() {
             {/* Additional Info */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>📝 Style Preferences</Text>
+
+              {/* Style Chips Helper */}
+              <View style={styles.chipsContainer}>
+                {STYLE_TAGS.map((tag) => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={styles.chip}
+                    onPress={() => {
+                      const current = profile.additional_info || '';
+                      // Avoid duplicates
+                      if (current.includes(tag)) return;
+                      const newText = current ? `${current}, ${tag}` : tag;
+                      setProfile({ ...profile, additional_info: newText });
+                    }}
+                  >
+                    <Text style={styles.chipText}>+ {tag}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <View style={[styles.inputContainer, styles.textAreaContainer]}>
                 <TextInput
                   style={[styles.input, styles.textArea]}
@@ -619,7 +693,7 @@ export default function ProfileScreen() {
               </View>
               {!!additionalInfoObj?.ai_profile_analysis && (
                 <Text style={styles.noteText}>
-                  ✅ Your AI photo analysis is saved separately and won’t be overwritten.
+                  ✅ Your photo analysis is saved separately and won’t be overwritten.
                 </Text>
               )}
             </View>
@@ -694,7 +768,7 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: SPACING.xxxl,
   },
-  
+
   // Header
   header: {
     alignItems: 'center',
@@ -716,7 +790,7 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: 'center',
   },
-  
+
   // Form Card
   formCard: {
     backgroundColor: COLORS.backgroundGlass,
@@ -725,7 +799,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  
+
   // Input Groups
   inputGroup: {
     marginBottom: SPACING.lg,
@@ -783,7 +857,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textMuted,
   },
-  
+
   // Custom Select
   selectContainer: {
     marginBottom: SPACING.lg,
@@ -805,7 +879,30 @@ const styles = StyleSheet.create({
   },
   selectArrow: {
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: COLORS.textSecondary,
+    marginLeft: SPACING.sm,
+  },
+
+  // Chips
+  chipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: SPACING.sm,
+  },
+  chip: {
+    backgroundColor: COLORS.surfaceLight,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.pill,
+    marginRight: SPACING.xs,
+    marginBottom: SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  chipText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
   },
   optionsContainer: {
     marginTop: SPACING.xs,
@@ -814,6 +911,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: 'hidden',
+    maxHeight: 250,
   },
   optionItem: {
     flexDirection: 'row',
@@ -839,7 +937,7 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '700',
   },
-  
+
   // Save Button
   saveButton: {
     borderRadius: BORDER_RADIUS.lg,

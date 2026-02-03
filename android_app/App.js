@@ -4,10 +4,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createURL } from 'expo-linking';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import ErrorBoundary from './utils/ErrorBoundary';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
+import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
+import ResetPasswordScreen from './screens/ResetPasswordScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import UserImagesScreen from './screens/UserImagesScreen';
+import MeScreen from './screens/MeScreen';
 import WardrobeScreen from './screens/WardrobeScreen';
 import RecommendationsScreen from './screens/RecommendationsScreen';
 
@@ -26,8 +30,7 @@ const linking = {
       Signup: 'signup',
       Main: {
         screens: {
-          Profile: 'profile',
-          UserImages: 'photos',
+          Me: 'me',
           Wardrobe: 'wardrobe',
           Recommendations: 'style-ai',
 
@@ -56,19 +59,11 @@ function MainTabs() {
       }}
     >
       <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
+        name="Me"
+        component={MeScreen}
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ focused }) => <TabIcon icon="👤" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="UserImages"
-        component={UserImagesScreen}
-        options={{
-          title: 'Photos',
-          tabBarIcon: ({ focused }) => <TabIcon icon="📸" focused={focused} />,
+          title: 'Me',
+          tabBarIcon: ({ focused }) => <TabIcon icon="🧑" focused={focused} />,
         }}
       />
       <Tab.Screen
@@ -83,7 +78,7 @@ function MainTabs() {
         name="Recommendations"
         component={RecommendationsScreen}
         options={{
-          title: 'Style AI',
+          title: 'Style Studio',
           tabBarIcon: ({ focused }) => <TabIcon icon="✨" focused={focused} />,
         }}
       />
@@ -97,12 +92,14 @@ function AuthStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Signup" component={SignupScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </Stack.Navigator>
   );
 }
 
 function AppNavigator() {
-  const { isAuthenticated, loading, logout } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
     return (
@@ -149,14 +146,6 @@ function AppNavigator() {
               ),
               headerStyle: styles.header,
               headerTintColor: COLORS.textPrimary,
-              headerRight: () => (
-                <TouchableOpacity
-                  style={styles.logoutButton}
-                  onPress={logout}
-                >
-                  <Text style={styles.logoutText}>Logout</Text>
-                </TouchableOpacity>
-              ),
             }}
           />
         </Stack.Navigator>
@@ -167,11 +156,21 @@ function AppNavigator() {
   );
 }
 
+import { API_BASE_URL } from './config/api';
+
+if (typeof __DEV__ !== 'undefined' && __DEV__) {
+  console.log("--------------- DEBUG API -------------");
+  console.log("Current API Base URL:", API_BASE_URL);
+  console.log("---------------------------------------");
+}
+
 export default function App() {
   return (
-    <AuthProvider>
-      <AppNavigator />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppNavigator />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -226,18 +225,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  logoutButton: {
-    marginRight: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: COLORS.error + '20',
-    borderRadius: 20,
-  },
-  logoutText: {
-    color: COLORS.error,
-    fontSize: 14,
-    fontWeight: '600',
-  },
+
 
   // Tab Bar
   tabBar: {

@@ -99,18 +99,18 @@ const CustomModal = ({ visible, onClose, title, children }) => {
             <BlurView intensity={20} style={StyleSheet.absoluteFill} tint="dark" />
           </Animated.View>
         </TouchableOpacity>
-        
+
         <Animated.View style={[
-          styles.modalContainer, 
+          styles.modalContainer,
           { transform: [{ translateY: slideAnim }] }
         ]}>
           {/* Glassmorphic Background */}
           {Platform.OS === 'web' ? (
-             <LinearGradient colors={[COLORS.surface, COLORS.background]} style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={[COLORS.surface, COLORS.background]} style={StyleSheet.absoluteFill} />
           ) : (
             <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
           )}
-          
+
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{title}</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -134,8 +134,10 @@ const AboutModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="lightbulb-on-outline" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>What is Dripdirective?</Text>
+      <Text style={styles.subtitle}>
+        Dripdirective is your smart style assistant that helps you discover outfits from your own wardrobe.
+      </Text>
       <Text style={styles.modalText}>
-        Dripdirective is an AI-powered style assistant that helps you discover outfits from your own wardrobe.
         Upload your photos, add your clothes, and get personalized recommendations for any occasion.
       </Text>
     </View>
@@ -145,11 +147,11 @@ const AboutModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="target" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>How it works</Text>
-      
+
       {[
         { num: 1, title: 'Build your profile', desc: 'Tell us your body type, skin tone, location, and style preferences.' },
-        { num: 2, title: 'Upload & analyze photos', desc: 'Upload a few photos and get an AI style profile with color recommendations.' },
-        { num: 3, title: 'Add your wardrobe', desc: 'Upload images of your clothes. AI analyzes each item (color, style, fit).' },
+        { num: 2, title: 'Upload & analyze photos', desc: 'Upload a few photos and get a personal style profile with color recommendations.' },
+        { num: 3, title: 'Add your wardrobe', desc: 'Upload images of your clothes. We analyze each item (color, style, fit).' },
         { num: 4, title: 'Ask for outfit ideas', desc: 'Describe what you need (e.g., "casual weekend", "work meeting") and get curated outfits.' }
       ].map((step, index) => (
         <View key={index} style={styles.stepRow}>
@@ -168,7 +170,7 @@ const AboutModal = ({ visible, onClose }) => (
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>Features</Text>
       {[
-        'AI-powered style analysis from your photos',
+        'Smart style analysis from your photos',
         'Smart outfit recommendations from your own wardrobe',
         'Virtual try-on to preview looks',
         'Personalized color and styling tips'
@@ -207,7 +209,7 @@ const ContactModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="email-outline" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>Get in touch</Text>
-      
+
       <TouchableOpacity style={styles.contactCard} onPress={() => openLink('mailto:dripdirectiveai@gmail.com')} activeOpacity={0.85}>
         <View style={styles.contactIconWrap}>
           <MaterialCommunityIcons name="email" size={24} color={COLORS.primary} />
@@ -225,7 +227,7 @@ const ContactModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="share-variant-outline" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>Follow us</Text>
-      
+
       <TouchableOpacity style={styles.contactCard} onPress={() => openLink('https://www.instagram.com/dripdirectiveai')} activeOpacity={0.85}>
         <View style={[styles.contactIconWrap, { backgroundColor: '#E1306C15', borderColor: '#E1306C30' }]}>
           <FontAwesome name="instagram" size={24} color="#E1306C" />
@@ -254,12 +256,12 @@ const ContactModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="account-group-outline" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>Founders</Text>
-      
+
       <View style={styles.founderRow}>
         <FounderAvatar name="Tasnim Iram" />
         <View style={{ flex: 1 }}>
           <Text style={styles.founderName}>Tasnim Iram</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.linkedInBtn}
             onPress={() => openLink('https://www.linkedin.com/in/tasnim-iram-55457822/')}
           >
@@ -273,7 +275,7 @@ const ContactModal = ({ visible, onClose }) => (
         <FounderAvatar name="Suvom Shaw" />
         <View style={{ flex: 1 }}>
           <Text style={styles.founderName}>Suvom Shaw</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.linkedInBtn}
             onPress={() => openLink('https://www.linkedin.com/in/suvomshaw/')}
           >
@@ -367,27 +369,27 @@ export default function LandingScreen({ navigation }) {
       <Animated.View style={[styles.wrapper, { opacity: fadeAnim }]}>
         {/* Top navigation */}
         <View style={styles.topNav}>
-          <TouchableOpacity 
-            style={styles.navBtn} 
-            onPress={() => setShowAbout(true)} 
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => setShowAbout(true)}
             activeOpacity={0.85}
           >
-            <LinearGradient 
-              colors={['#2563EB', '#1D4ED8']} 
+            <LinearGradient
+              colors={['#2563EB', '#1D4ED8']}
               style={styles.navBtnGrad}
             >
               <MaterialCommunityIcons name="book-open-page-variant" size={18} color="#FFFFFF" />
               <Text style={styles.navBtnText}>About Us</Text>
             </LinearGradient>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.navBtn} 
-            onPress={() => setShowContact(true)} 
+
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => setShowContact(true)}
             activeOpacity={0.85}
           >
-            <LinearGradient 
-              colors={['#22C55E', '#16A34A']} 
+            <LinearGradient
+              colors={['#22C55E', '#16A34A']}
               style={styles.navBtnGrad}
             >
               <MaterialCommunityIcons name="card-account-mail" size={18} color="#FFFFFF" />
@@ -414,16 +416,16 @@ export default function LandingScreen({ navigation }) {
                 </LinearGradient>
               </Animated.View>
 
-              <Text style={styles.mainTitle}>Dripdirective</Text>
-              <Animated.View style={[styles.taglineWrap, { transform: [{ translateY: floatY }] }]}>
-                <LinearGradient colors={[COLORS.accent, COLORS.primary]} style={styles.taglineGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                  <Text style={styles.tagline}>Your AI Style Companion</Text>
-                </LinearGradient>
-              </Animated.View>
-
-              <Text style={styles.heroDesc}>
-                Discover personalized outfit ideas from your own wardrobe. Upload your photos, add your clothes, and let AI curate looks that match your vibe.
-              </Text>
+              <View style={styles.textArea}>
+                <Text style={styles.tagline}>Your Style Companion</Text>
+                <Text style={styles.heroTitle}>
+                  Personalized styling,{'\n'}
+                  <Text style={styles.highlight}>just for you.</Text>
+                </Text>
+                <Text style={styles.heroDesc}>
+                  Discover personalized outfit ideas from your own wardrobe. Upload your photos, add your clothes, and let us curate looks that match your vibe.
+                </Text>
+              </View>
 
               <Animated.View style={{ transform: [{ scale: pulseAnim }], width: '100%', maxWidth: 320, alignItems: 'center' }}>
                 <TouchableOpacity style={styles.ctaButton} onPress={() => navigation.navigate('Login')} activeOpacity={0.85}>
@@ -454,9 +456,9 @@ export default function LandingScreen({ navigation }) {
 
           {/* Features Grid */}
           <View style={styles.featuresGrid}>
-            <FeatureCard icon="account-circle-outline" title="Smart Profile" text="AI learns your body type, tone, and style vibe" />
-            <FeatureCard icon="camera-outline" title="Photo Analysis" text="Upload photos, get personalized color & style tips" />
-            <FeatureCard icon="wardrobe-outline" title="Wardrobe AI" text="Add your clothes, let AI tag and organize them" />
+            <FeatureCard icon="account-circle-outline" title="Smart Profile" text="We learn your body type, tone, and style vibe" />
+            <FeatureCard icon="camera-outline" title="Virtual Try-On" text="Visualize outfits on yourself instantly" />
+            <FeatureCard icon="wardrobe-outline" title="Smart Wardrobe" text="Add your clothes, let us tag and organize them" />
             <FeatureCard icon="magic-staff" title="Outfit Ideas" text="Get curated looks for any occasion in seconds" />
           </View>
 
@@ -734,7 +736,7 @@ const styles = StyleSheet.create({
   },
   modalSectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary, marginBottom: SPACING.sm },
   modalText: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 22, textAlign: 'center' },
-  
+
   bulletRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
@@ -816,7 +818,7 @@ const styles = StyleSheet.create({
   avatarGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
   founderName: { fontSize: 16, fontWeight: '900', color: COLORS.textPrimary, marginBottom: 4 },
-  
+
   linkedInBtn: {
     flexDirection: 'row',
     alignItems: 'center',

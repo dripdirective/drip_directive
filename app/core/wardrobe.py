@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import User, WardrobeItem, WardrobeImage, ProcessingStatus
 from app.config import settings
 from app.core.storage import save_user_scoped_file, remove_stored_file
-from app.core.utils import get_file_extension
+from app.core.utils import get_file_extension, resize_image_bytes
 
 
 async def upload_wardrobe_item(
@@ -29,11 +29,30 @@ async def upload_wardrobe_item(
         Tuple of (success, error_message, wardrobe_item)
     """
     # Generate filename
+    # Generate filename (UUID to prevent race conditions)
     file_extension = get_file_extension(filename, default=getattr(settings, "DEFAULT_IMAGE_EXTENSION", ".jpg"))
-    existing_count = db.query(WardrobeItem).filter(
-        WardrobeItem.user_id == user.id
-    ).count()
-    new_filename = f"user_{user.id}_wardrobe_{existing_count + 1}{file_extension}"
+    import uuid
+    new_filename = f"user_{user.id}_wardrobe_{uuid.uuid4().hex}{file_extension}"
+    
+    # Calculate original file size for duplicate detection
+    file_size = len(content)
+    
+    # Check if image already exists (Filename + Size check)
+    # CRITICAL: Scope check to THIS user only
+    if filename:
+        existing_image = db.query(WardrobeImage).join(WardrobeItem).filter(
+            WardrobeItem.user_id == user.id,
+            WardrobeImage.original_filename == filename,
+            WardrobeImage.file_size == file_size
+        ).first()
+        
+        if existing_image:
+            print(f"   ⚠️ Duplicate image detected (name={filename}, size={file_size}). Returning existing item {existing_image.wardrobe_item_id}.")
+            existing_item = get_wardrobe_item_by_id(db, user.id, existing_image.wardrobe_item_id)
+            return True, "Duplicate image detected", existing_item
+
+    # Resize image to optimize storage and AI costs
+    content = resize_image_bytes(content, max_dimension=1024)
     
     try:
         relative_path = await save_user_scoped_file(
@@ -58,7 +77,9 @@ async def upload_wardrobe_item(
     wardrobe_image = WardrobeImage(
         wardrobe_item_id=wardrobe_item.id,
         image_path=relative_path,
-        is_original=True
+        is_original=True,
+        original_filename=filename,
+        file_size=file_size
     )
     db.add(wardrobe_image)
     db.commit()

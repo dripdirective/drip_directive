@@ -84,6 +84,19 @@ export const authAPI = {
     await AsyncStorage.removeItem('access_token');
     await AsyncStorage.removeItem('user');
   },
+
+  forgotPassword: async (email) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  resetPassword: async (token, newPassword) => {
+    const response = await api.post('/auth/reset-password', {
+      token,
+      new_password: newPassword,
+    });
+    return response.data;
+  },
 };
 
 // User Profile API
@@ -114,9 +127,9 @@ export const userImagesAPI = {
     const hasBlob = typeof Blob !== 'undefined';
     console.log('Is File:', hasFile ? imageUri instanceof File : false);
     console.log('Is Blob:', hasBlob ? imageUri instanceof Blob : false);
-    
+
     let file;
-    
+
     try {
       // React Native (Android/iOS): use { uri, name, type } object (NOT File/Blob)
       if (Platform.OS !== 'web') {
@@ -173,7 +186,7 @@ export const userImagesAPI = {
       // Handle string URIs (blob:, http://, file://)
       else if (typeof imageUri === 'string') {
         console.log('String URI:', imageUri.substring(0, 50));
-        
+
         try {
           const response = await fetch(imageUri);
           console.log('Fetch response status:', response.status);
@@ -203,7 +216,7 @@ export const userImagesAPI = {
       formData.append('file', file, file.name);
 
       console.log('POST to:', API_ENDPOINTS.UPLOAD_USER_IMAGE);
-      
+
       const response = await api.post(API_ENDPOINTS.UPLOAD_USER_IMAGE, formData);
       console.log('Upload success:', response.status, response.data);
       return response.data;
@@ -228,7 +241,7 @@ export const userImagesAPI = {
       console.log('API: Data type:', typeof response.data);
       console.log('API: Is array:', Array.isArray(response.data));
       console.log('API: Received', response.data?.length || 0, 'images');
-      
+
       // Ensure we return an array
       if (!response.data) {
         console.warn('API: No data in response');
@@ -264,9 +277,9 @@ export const wardrobeAPI = {
     const hasFile = typeof File !== 'undefined';
     const hasBlob = typeof Blob !== 'undefined';
     console.log('Is File:', hasFile ? imageUri instanceof File : false);
-    
+
     let file;
-    
+
     try {
       // React Native (Android/iOS): use { uri, name, type } object
       if (Platform.OS !== 'web') {
@@ -388,7 +401,7 @@ export const recommendationsAPI = {
       query = queryOrObj;
       recType = recommendationType;
     }
-    
+
     console.log('');
     console.log('========================================');
     console.log('🚀 API: Generate Recommendations');
@@ -397,16 +410,16 @@ export const recommendationsAPI = {
     console.log('Query:', query);
     console.log('Type:', recType);
     console.log('Request body:', JSON.stringify({ query, recommendation_type: recType }));
-    
+
     try {
       const requestData = {
         query: query,
         recommendation_type: recType,
       };
       console.log('📤 Sending POST request...');
-      
+
       const response = await api.post(API_ENDPOINTS.GENERATE_RECOMMENDATIONS, requestData);
-      
+
       console.log('✅ API Response Status:', response.status);
       console.log('✅ API Response Data:', JSON.stringify(response.data));
       return response.data;

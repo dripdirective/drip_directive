@@ -11,10 +11,12 @@ from app.core.users import (
     profile_exists
 )
 
+from typing import Optional
+
 router = APIRouter()
 
 
-@router.get("/profile", response_model=UserProfileResponse)
+@router.get("/profile", response_model=Optional[UserProfileResponse])
 async def get_profile(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -22,10 +24,7 @@ async def get_profile(
     """Get user profile"""
     profile = get_user_profile(db, current_user.id)
     if not profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Profile not found"
-        )
+        return None
     return profile
 
 

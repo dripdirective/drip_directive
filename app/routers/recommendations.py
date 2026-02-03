@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -79,7 +79,7 @@ async def generate_recommendations(
 async def get_recommendations(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
-    limit: int = 10
+    limit: int = Query(default=10, ge=1, le=100)
 ):
     """Get all recommendations for the current user"""
     recommendations = get_user_recommendations(db, current_user.id, limit)

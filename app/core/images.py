@@ -9,7 +9,7 @@ from app.models import User, UserImage, ImageType, ProcessingStatus
 from app.config import settings
 from app.core.constants import DEFAULT_USER_IMAGE_TYPE, ERR_IMAGE_NOT_SAVED
 from app.core.storage import save_user_scoped_file, remove_stored_file, resolve_storage_path
-from app.core.utils import get_file_extension
+from app.core.utils import get_file_extension, resize_image_bytes
 
 
 async def upload_user_image(
@@ -43,12 +43,13 @@ async def upload_user_image(
         return False, f"Invalid image_type. Must be one of: {[e.value for e in ImageType]}", None
 
     # Generate filename
-    existing_count = db.query(UserImage).filter(
-        UserImage.user_id == user.id,
-        UserImage.image_type == image_type_enum
-    ).count()
+    # Generate filename (UUID to prevent race conditions)
     file_extension = get_file_extension(filename, default=getattr(settings, "DEFAULT_IMAGE_EXTENSION", ".jpg"))
-    new_filename = f"user_{user.id}_{image_type_enum.value}_{existing_count + 1}{file_extension}"
+    import uuid
+    new_filename = f"user_{user.id}_{image_type_enum.value}_{uuid.uuid4().hex}{file_extension}"
+
+    # Resize image to optimize storage and AI costs
+    content = resize_image_bytes(content, max_dimension=1024)
 
     try:
         # Save to disk under uploads/user_images/<user>/...

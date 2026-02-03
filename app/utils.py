@@ -69,3 +69,21 @@ def get_current_active_user(current_user: User = Depends(get_current_user)) -> U
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
+def create_reset_token(email: str) -> str:
+    """Create a password reset token (valid for 15 minutes)"""
+    expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode = {"sub": email, "type": "reset", "exp": expire}
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+
+def verify_reset_token(token: str) -> Optional[str]:
+    """Verify a reset token and return the email if valid"""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "reset":
+            return None
+        email: str = payload.get("sub")
+        return email
+    except JWTError:
+        return None

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,18 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  Image,
+  Image as RNImage,
+  Platform,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
+
+if (Platform.OS === 'android') {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -72,7 +82,10 @@ const AIProfileCard = ({ profile }) => {
   const physical = analysis.physical_attributes || {};
   const facial = analysis.facial_features || {};
   const style = analysis.style_assessment || {};
-  const styleNotes = (() => {
+  const summaryPoints = (() => {
+    if (analysis.summary_points && Array.isArray(analysis.summary_points) && analysis.summary_points.length > 0) {
+      return analysis.summary_points;
+    }
     const raw = style.style_notes;
     if (!raw) return [];
     if (Array.isArray(raw)) return raw.filter(Boolean).slice(0, 6);
@@ -89,113 +102,170 @@ const AIProfileCard = ({ profile }) => {
   return (
     <View style={styles.profileCard}>
       <LinearGradient
-        colors={[COLORS.primary + '20', COLORS.accent + '10']}
-        style={styles.profileCardGradient}
+        colors={[COLORS.primary, '#9d4edd']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.profileHeaderGradient}
       >
-        <View style={styles.profileHeader}>
-          <Text style={styles.profileEmoji}>🤖</Text>
-          <View>
-            <Text style={styles.profileTitle}>AI Style Analysis</Text>
-            <Text style={styles.profileSubtitle}>
-              Based on {profile.images_analyzed?.length || 0} photos
-            </Text>
-          </View>
-        </View>
+        <Text style={styles.profileTitle}>Style Analysis</Text>
+        <Text style={styles.profileSubtitle}>Based on your photos</Text>
+      </LinearGradient>
 
-        {/* Physical Attributes */}
+      {/* Physical Attributes */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📊 Physical Attributes</Text>
+        <View style={styles.attributeGrid}>
+          {physical.body_type && (
+            <AttributeChip icon="🏃" label="Body Type" value={physical.body_type} />
+          )}
+          {physical.shoulder_type && (
+            <AttributeChip icon="📐" label="Shoulders" value={physical.shoulder_type} />
+          )}
+          {physical.vertical_proportions && (
+            <AttributeChip icon="📏" label="Proportions" value={physical.vertical_proportions} />
+          )}
+          {physical.waist_type && (
+            <AttributeChip icon="👖" label="Waist" value={physical.waist_type} />
+          )}
+          {physical.skin_tone && (
+            <AttributeChip icon="🎨" label="Skin Tone" value={physical.skin_tone} />
+          )}
+          {physical.contrast_level && (
+            <AttributeChip icon="🌗" label="Contrast" value={physical.contrast_level} />
+          )}
+          {physical.height_category && (
+            <AttributeChip icon="📏" label="Height" value={physical.height_category} />
+          )}
+          {physical.estimated_age_range && (
+            <AttributeChip icon="🎂" label="Age Range" value={physical.estimated_age_range} />
+          )}
+        </View>
+      </View>
+
+      {/* Facial Features */}
+      {(facial.face_shape || facial.hair_color) && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📊 Physical Attributes</Text>
+          <Text style={styles.sectionTitle}>👤 Facial Features</Text>
           <View style={styles.attributeGrid}>
-            {physical.body_type && (
-              <AttributeChip icon="🏃" label="Body Type" value={physical.body_type} />
+            {facial.face_shape && (
+              <AttributeChip icon="🔷" label="Face Shape" value={facial.face_shape} />
             )}
-            {physical.skin_tone && (
-              <AttributeChip icon="🎨" label="Skin Tone" value={physical.skin_tone} />
+            {facial.hair_color && (
+              <AttributeChip icon="💇" label="Hair" value={facial.hair_color} />
             )}
-            {physical.height_category && (
-              <AttributeChip icon="📏" label="Height" value={physical.height_category} />
-            )}
-            {physical.estimated_age_range && (
-              <AttributeChip icon="🎂" label="Age Range" value={physical.estimated_age_range} />
+            {facial.eye_color && (
+              <AttributeChip icon="👁️" label="Eyes" value={facial.eye_color} />
             )}
           </View>
         </View>
+      )}
 
-        {/* Facial Features */}
-        {(facial.face_shape || facial.hair_color) && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>👤 Facial Features</Text>
-            <View style={styles.attributeGrid}>
-              {facial.face_shape && (
-                <AttributeChip icon="🔷" label="Face Shape" value={facial.face_shape} />
-              )}
-              {facial.hair_color && (
-                <AttributeChip icon="💇" label="Hair" value={facial.hair_color} />
-              )}
-              {facial.eye_color && (
-                <AttributeChip icon="👁️" label="Eyes" value={facial.eye_color} />
-              )}
-            </View>
-          </View>
-        )}
+      {/* Style Recommendations */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>✨ Style Profile</Text>
+        <View style={styles.attributeGrid}>
+          {style.style_personality && (
+            <AttributeChip icon="✨" label="Vibe" value={style.style_personality} />
+          )}
+          {style.observed_fit_preference && (
+            <AttributeChip icon="👕" label="Fit Preference" value={style.observed_fit_preference} />
+          )}
+        </View>
+      </View>
 
-        {/* Style Recommendations */}
-        {style.recommended_colors && style.recommended_colors.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>✅ Best Colors For You</Text>
-            <View style={styles.colorTags}>
-              {style.recommended_colors.slice(0, 6).map((color, idx) => (
-                <View key={idx} style={styles.colorTag}>
-                  <View style={[
-                    styles.colorSwatch,
-                    { backgroundColor: getColorHex(color) || COLORS.border }
-                  ]} />
-                  <Text style={styles.colorTagText}>{color}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {style.colors_to_avoid && style.colors_to_avoid.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>❌ Colors to Avoid</Text>
-            <View style={styles.colorTags}>
-              {style.colors_to_avoid.slice(0, 4).map((color, idx) => (
-                <View key={idx} style={[styles.colorTag, styles.colorTagBad]}>
-                  <View style={[
-                    styles.colorSwatch,
-                    { backgroundColor: getColorHex(color) || COLORS.border }
-                  ]} />
-                  <Text style={styles.colorTagText}>{color}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {style.recommended_styles && style.recommended_styles.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>👗 Recommended Styles</Text>
-            <View style={styles.colorTags}>
-              {style.recommended_styles.slice(0, 4).map((s, idx) => (
-                <View key={idx} style={[styles.colorTag, styles.styleTag]}>
-                  <Text style={styles.colorTagText}>{s}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {styleNotes.length > 0 && (
-          <View style={styles.notesBox}>
-            <Text style={styles.notesLabel}>💡 Personalized Tips</Text>
-            {styleNotes.map((tip, idx) => (
-              <Text key={idx} style={styles.notesText}>• {tip}</Text>
+      {style.recommended_colors && style.recommended_colors.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>✅ Best Colors For You</Text>
+          <View style={styles.colorTags}>
+            {style.recommended_colors.slice(0, 6).map((color, idx) => (
+              <View key={idx} style={styles.colorTag}>
+                <View style={[
+                  styles.colorSwatch,
+                  { backgroundColor: getColorHex(color) || COLORS.border }
+                ]} />
+                <Text style={styles.colorTagText}>{color}</Text>
+              </View>
             ))}
           </View>
-        )}
-      </LinearGradient>
+        </View>
+      )}
+
+      {style.colors_to_avoid && style.colors_to_avoid.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>❌ Colors to Avoid</Text>
+          <View style={styles.colorTags}>
+            {style.colors_to_avoid.slice(0, 4).map((color, idx) => (
+              <View key={idx} style={[styles.colorTag, styles.colorTagBad]}>
+                <View style={[
+                  styles.colorSwatch,
+                  { backgroundColor: getColorHex(color) || COLORS.border }
+                ]} />
+                <Text style={styles.colorTagText}>{color}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {style.recommended_styles && style.recommended_styles.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>👗 Recommended Styles</Text>
+          <View style={styles.colorTags}>
+            {style.recommended_styles.slice(0, 4).map((s, idx) => (
+              <View key={idx} style={[styles.colorTag, styles.styleTag]}>
+                <Text style={styles.colorTagText}>{s}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Detailed Style Strategy */}
+      {(style.style_strengths || style.style_opportunities) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🎯 Style Strategy</Text>
+          {style.style_strengths && (
+            <View style={styles.strategyBox}>
+              <Text style={styles.strategyLabel}>💪 Your Strengths</Text>
+              <Text style={styles.strategyText}>{style.style_strengths}</Text>
+            </View>
+          )}
+          {style.style_opportunities && (
+            <View style={[styles.strategyBox, { marginTop: 8 }]}>
+              <Text style={styles.strategyLabel}>🚀 Opportunities to Try</Text>
+              <Text style={styles.strategyText}>{style.style_opportunities}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Accessories & Seasonal */}
+      {(style.accessory_suggestions || style.seasonal_recommendations) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>💍 Accessories & Seasons</Text>
+          {style.accessory_suggestions && (
+            <View style={styles.strategyBox}>
+              <Text style={styles.strategyLabel}>✨ Accessories</Text>
+              <Text style={styles.strategyText}>{style.accessory_suggestions}</Text>
+            </View>
+          )}
+          {style.seasonal_recommendations && (
+            <View style={[styles.strategyBox, { marginTop: 8 }]}>
+              <Text style={styles.strategyLabel}>🌤️ Seasonal Tip</Text>
+              <Text style={styles.strategyText}>{style.seasonal_recommendations}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {summaryPoints.length > 0 && (
+        <View style={styles.notesBox}>
+          <Text style={styles.notesLabel}>💡 Style Insights</Text>
+          {summaryPoints.map((tip, idx) => (
+            <Text key={idx} style={styles.notesText}>• {tip}</Text>
+          ))}
+        </View>
+      )}
     </View>
   );
 };
@@ -212,26 +282,41 @@ const AttributeChip = ({ icon, label, value }) => (
 
 export default function UserImagesScreen() {
   const [images, setImages] = useState([]);
+  const [selectedAssets, setSelectedAssets] = useState([]); // Buffer for selected but not uploaded
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [aiProfile, setAiProfile] = useState(null);
+  const pollIntervalRef = useRef(null);
+  const pollTimeoutRef = useRef(null);
 
   useEffect(() => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      pollIntervalRef.current = null;
+      pollTimeoutRef.current = null;
+    };
+  }, []);
+
   const loadData = async () => {
     try {
       setLoading(true);
-      const [imagesData, profileData] = await Promise.all([
-        userImagesAPI.getImages(),
-        loadAIProfile(),
-      ]);
+      // Serialize requests to avoid tunnel 503 errors (too many concurrent requests)
+      const imagesData = await userImagesAPI.getImages();
 
       if (imagesData && Array.isArray(imagesData)) {
         setImages(imagesData.sort((a, b) => b.id - a.id));
       }
+
+      // Small delay to let the tunnel breathe
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      await loadAIProfile();
     } catch (error) {
       if (error?.response?.status !== 401) {
         console.error('Error loading data:', error);
@@ -255,12 +340,19 @@ export default function UserImagesScreen() {
         }
         if (info && info.ai_profile_analysis) {
           setAiProfile(info.ai_profile_analysis);
+          if (__DEV__) {
+            try {
+              console.log('AI profile keys:', Object.keys(info.ai_profile_analysis || {}).sort());
+              console.log('AI profile preview:', JSON.stringify(info.ai_profile_analysis).slice(0, 1200));
+            } catch {}
+          }
           return info.ai_profile_analysis;
         }
       }
     } catch (error) {
-      // Profile may not exist yet for new users (404) — don't treat as fatal.
-      if (error?.response?.status !== 404) {
+      // Ignore 404 (no profile) and 503 (tunnel busy) to prevent user alarm
+      const status = error?.response?.status;
+      if (status !== 404 && status !== 503) {
         console.error('Error loading AI profile:', error);
       }
     }
@@ -270,14 +362,20 @@ export default function UserImagesScreen() {
   const pickImages = async () => {
     try {
       if (typeof document !== 'undefined') {
+        // Web handling
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
         input.multiple = true;
-        input.onchange = async (e) => {
+        input.onchange = (e) => {
           const files = e.target.files;
           if (files && files.length > 0) {
-            await uploadImages(Array.from(files).map(file => ({ file })));
+            const newAssets = Array.from(files).map(file => ({
+              uri: URL.createObjectURL(file), // Create preview URL
+              file: file,
+              id: Math.random().toString(36).slice(2, 11), // Temp ID
+            }));
+            setSelectedAssets(prev => [...prev, ...newAssets]);
           }
         };
         input.click();
@@ -291,57 +389,121 @@ export default function UserImagesScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Reverted to fix crash
+        mediaTypes: ['images'], // Safest cross-version option
         allowsMultipleSelection: true,
-        selectionLimit: 0, // 0 means unlimited
-        quality: 0.8,
+        selectionLimit: 0,
       });
 
-      if (!result.canceled && result.assets?.length > 0) {
-        await uploadImages(result.assets);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        // Staggered loading effect - slowed down for premium feel
+        const baseAssets = result.assets.map(a => ({
+          ...a,
+          id: Math.random().toString(36).slice(2, 11)
+        }));
+
+        // Use async loop instead of recursion for better safety/readability
+        const addAssetsSequentially = async () => {
+          for (const asset of baseAssets) {
+            if (!asset || !asset.uri) continue; // Skip invalid assets
+
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setSelectedAssets(prev => [...prev, asset]);
+
+            // 200ms stagger for premium "thud" feel
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        };
+
+        addAssetsSequentially().catch(err => console.error('Stagger error:', err));
       }
     } catch (error) {
       Alert.alert('Error', error.message || 'Failed to pick images');
     }
   };
 
-  const uploadImages = async (assets) => {
+  const removeSelectedAsset = (tempId) => {
+    setSelectedAssets(prev => prev.filter(a => a.id !== tempId));
+  };
+
+  const handleUploadSelected = async () => {
+    if (selectedAssets.length === 0) return;
+
     try {
       setUploading(true);
 
-      const uploadPromises = assets.map(async (asset) => {
-        try {
-          const uploaded = asset.file
-            ? await userImagesAPI.uploadImage('user_image', asset.file)
-            : await userImagesAPI.uploadImage('user_image', asset.uri);
-          return uploaded?.id ? 1 : 0;
-        } catch (error) {
-          console.error('Upload error:', error);
-          if (error?.response?.status === 401) {
-            // let auth context handle redirect
-            return 0;
-          }
-          return 0;
-        }
-      });
+      // Sequential processing and upload to avoid race conditions and improve stability
+      let successCount = 0;
+      const total = selectedAssets.length;
 
-      const results = await Promise.all(uploadPromises);
-      const successCount = results.reduce((a, b) => a + b, 0);
+      // Clone array to avoid mutation issues during iteration
+      const assetsToUpload = [...selectedAssets];
+
+      for (let i = 0; i < total; i++) {
+        const asset = assetsToUpload[i];
+
+        try {
+          // 1. Process image (if needed)
+          let finalUri = asset.uri;
+          let fileObj = asset.file;
+
+          // Only manipulate if not a web file object
+          if (!fileObj && Platform.OS !== 'web') {
+            try {
+              let resizeAction = {};
+              if (asset.width > asset.height) {
+                if (asset.width > 1536) resizeAction = { width: 1536 }; // Increased from 1024 for better quality
+              } else {
+                if (asset.height > 1536) resizeAction = { height: 1536 };
+              }
+
+              const actions = Object.keys(resizeAction).length > 0 ? [{ resize: resizeAction }] : [];
+
+              if (actions.length > 0) {
+                const manipulated = await ImageManipulator.manipulateAsync(
+                  asset.uri,
+                  actions,
+                  { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG } // Higher quality
+                );
+                finalUri = manipulated.uri;
+              }
+            } catch (processErr) {
+              console.warn('Image processing failed, using original', processErr);
+            }
+          }
+
+          // 2. Upload
+          console.log(`Uploading ${i + 1}/${total}...`);
+          const uploaded = fileObj
+            ? await userImagesAPI.uploadImage('user_image', fileObj)
+            : await userImagesAPI.uploadImage('user_image', finalUri);
+
+          if (uploaded?.id) {
+            successCount++;
+            // Optional: Remove from selection immediately on success? 
+            // For now, we'll clear all at the end to be safe.
+          }
+
+        } catch (uploadErr) {
+          console.error(`Upload failed for item ${i + 1}:`, uploadErr);
+          // Continue to next item even if one fails
+        }
+      }
 
       if (successCount > 0) {
-        Alert.alert('✨ Success', `${successCount} photo(s) uploaded! Click "Analyze Photos" to get your AI style profile.`);
-        const data = await userImagesAPI.getImages();
-        if (data && Array.isArray(data)) {
-          setImages(data.sort((a, b) => b.id - a.id));
+        // Clear selection on success
+        setSelectedAssets([]);
+        // Refresh list
+        loadData();
+
+        if (successCount < total) {
+          Alert.alert('Upload Partially Complete', `${successCount} of ${total} images uploaded successfully.`);
         }
-      } else if (assets.length > 0) {
-        // Only show error if we tried to upload but got 0 successes
-        Alert.alert('Error', 'Failed to upload images');
+      } else {
+        Alert.alert('Error', 'Failed to upload images. Please check your connection and try again.');
       }
+
     } catch (error) {
-      if (error?.response?.status !== 401) {
-        Alert.alert('Error', 'Failed to upload images');
-      }
+      Alert.alert('Error', error.message || 'Upload failed');
     } finally {
       setUploading(false);
     }
@@ -350,33 +512,39 @@ export default function UserImagesScreen() {
   const handleAnalyze = async () => {
     const pendingImages = images.filter(img => img.processing_status === 'pending');
 
-    if (pendingImages.length === 0) {
-      Alert.alert('Info', 'All photos are already analyzed');
-      return;
-    }
+    if (pendingImages.length === 0) return; // Silent return
 
     try {
       setProcessing(true);
+      // Clear any previous polling (safety)
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      pollIntervalRef.current = null;
+      pollTimeoutRef.current = null;
+
       await aiProcessingAPI.processUserImages();
-      Alert.alert('🤖 Analyzing', 'AI is analyzing your photos. This may take a moment...');
 
       const checkStatus = setInterval(async () => {
         const data = await userImagesAPI.getImages();
         const allCompleted = data.every(img => img.processing_status === 'completed');
         if (allCompleted) {
           clearInterval(checkStatus);
+          pollIntervalRef.current = null;
           setProcessing(false);
-          setImages(data);
           await loadAIProfile();
-          Alert.alert('✅ Complete', 'Your AI style profile is ready!');
+          loadData();
         }
       }, 2000);
+      pollIntervalRef.current = checkStatus;
 
-      setTimeout(() => {
+      // Timeout fallback
+      const timeoutId = setTimeout(() => {
         clearInterval(checkStatus);
+        pollIntervalRef.current = null;
         setProcessing(false);
         loadData();
       }, 60000);
+      pollTimeoutRef.current = timeoutId;
 
     } catch (error) {
       setProcessing(false);
@@ -397,9 +565,7 @@ export default function UserImagesScreen() {
             await userImagesAPI.deleteImage(imageId);
             setImages(prev => prev.filter(img => img.id !== imageId));
           } catch (error) {
-            if (error?.response?.status !== 401) {
-              Alert.alert('Error', 'Failed to delete');
-            }
+            // silent fail or mild alert
           }
         },
       },
@@ -434,11 +600,9 @@ export default function UserImagesScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-          {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>📸 My Photos</Text>
-            <Text style={styles.subtitle}>Upload your photos for AI style analysis</Text>
-            <Text style={styles.subtitleHint}>You can explore other tabs anytime — this is just a helpful flow.</Text>
+            <Text style={styles.subtitle}>Upload your photos for style analysis</Text>
           </View>
 
           {/* Stats */}
@@ -457,46 +621,82 @@ export default function UserImagesScreen() {
             </View>
           </View>
 
-          {/* Step 1: Upload */}
+          {/* Step 1: Select & Upload */}
           <View style={styles.stepCard}>
             <View style={styles.stepHeader}>
               <View style={styles.stepNumber}>
                 <Text style={styles.stepNumberText}>1</Text>
               </View>
               <View>
-                <Text style={styles.stepTitle}>Upload Your Photos</Text>
-                <Text style={styles.stepSubtitle}>Add clear, well-lit photos of yourself</Text>
+                <Text style={styles.stepTitle}>Add Photos</Text>
+                <Text style={styles.stepSubtitle}>Select clear, full-body shots</Text>
               </View>
             </View>
 
-            <TouchableOpacity
-              style={[styles.uploadButton, uploading && styles.buttonDisabled]}
-              onPress={pickImages}
-              disabled={uploading}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={COLORS.gradients.primary}
-                style={styles.uploadButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
+            {/* PREVIEW GRID (Staging Area) */}
+            {selectedAssets.length > 0 && (
+              <View style={styles.previewContainer}>
+                <Text style={styles.previewLabel}>Ready to upload ({selectedAssets.length})</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.previewScroll}>
+                  {selectedAssets.map((asset) => (
+                    <View key={asset.id} style={styles.previewItem}>
+                      {/* Use RNImage for preview to ensure immediate update without caching weirdness */}
+                      <RNImage source={{ uri: asset.uri }} style={styles.previewImage} resizeMode="cover" />
+                      <TouchableOpacity
+                        style={styles.previewRemove}
+                        onPress={() => removeSelectedAsset(asset.id)}
+                      >
+                        <Text style={styles.previewRemoveText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            <View style={styles.actionRow}>
+              {/* Select Button */}
+              <TouchableOpacity
+                style={[styles.outlineButton, uploading && styles.buttonDisabled]}
+                onPress={pickImages}
+                disabled={uploading}
               >
-                {uploading ? (
-                  <View style={styles.loadingRow}>
-                    <ActivityIndicator color={COLORS.textPrimary} size="small" />
-                    <Text style={styles.uploadButtonText}>  Uploading...</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.uploadButtonText}>📷 Upload Photos</Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+                <Text style={styles.outlineButtonText}>
+                  {selectedAssets.length > 0 ? '+ Add More' : '📷 Select Photos'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Upload Button (Only if items selected) */}
+              {selectedAssets.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.primaryButton, uploading && styles.buttonDisabled]}
+                  onPress={handleUploadSelected}
+                  disabled={uploading}
+                >
+                  <LinearGradient
+                    colors={COLORS.gradients.primary}
+                    style={styles.primaryButtonGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    {uploading ? (
+                      <View style={styles.loadingRow}>
+                        <ActivityIndicator color={COLORS.textPrimary} size="small" />
+                        <Text style={styles.primaryButtonText}> Uploading...</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.primaryButtonText}>⬆️ Upload All</Text>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           {/* Photos Grid */}
           {images.length > 0 && (
             <View style={styles.photosSection}>
-              <Text style={styles.sectionLabel}>Your Photos ({images.length})</Text>
+              <Text style={styles.sectionLabel}>Your Gallery ({images.length})</Text>
               <View style={styles.photosGrid}>
                 {images.map((item) => {
                   const status = getStatusStyle(item.processing_status);
@@ -509,7 +709,8 @@ export default function UserImagesScreen() {
                             : `${API_BASE_URL}/${item.image_path}`
                         }}
                         style={styles.photoImage}
-                        resizeMode="cover"
+                        contentFit="cover"
+                        transition={200}
                       />
                       <View style={styles.photoOverlay}>
                         <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
@@ -537,11 +738,11 @@ export default function UserImagesScreen() {
                   <Text style={styles.stepNumberText}>{pendingCount === 0 ? '✓' : '2'}</Text>
                 </View>
                 <View>
-                  <Text style={styles.stepTitle}>Analyze with AI</Text>
+                  <Text style={styles.stepTitle}>Run Analysis</Text>
                   <Text style={styles.stepSubtitle}>
                     {pendingCount > 0
-                      ? `${pendingCount} photo(s) ready for analysis`
-                      : 'All photos analyzed!'
+                      ? `${pendingCount} new photo(s) to analyze`
+                      : 'All photos analyzed'
                     }
                   </Text>
                 </View>
@@ -582,7 +783,7 @@ export default function UserImagesScreen() {
                   <Text style={styles.stepNumberText}>✓</Text>
                 </View>
                 <View>
-                  <Text style={styles.stepTitle}>Your AI Style Profile</Text>
+                  <Text style={styles.stepTitle}>Your Style Profile</Text>
                   <Text style={styles.stepSubtitle}>Personalized analysis complete!</Text>
                 </View>
               </View>
@@ -592,20 +793,13 @@ export default function UserImagesScreen() {
           )}
 
           {/* Empty State */}
-          {images.length === 0 && (
+          {images.length === 0 && selectedAssets.length === 0 && (
             <View style={styles.emptyState}>
               <Text style={styles.emptyEmoji}>📸</Text>
-              <Text style={styles.emptyTitle}>No photos yet</Text>
+              <Text style={styles.emptyTitle}>Start Your Profile</Text>
               <Text style={styles.emptyText}>
-                Upload clear photos of yourself to get personalized AI style recommendations!
+                Upload photos to get your personalized style analysis.
               </Text>
-              <View style={styles.tips}>
-                <Text style={styles.tipsTitle}>📋 Tips for best results:</Text>
-                <Text style={styles.tipItem}>• Use well-lit, clear photos</Text>
-                <Text style={styles.tipItem}>• Include full body shots</Text>
-                <Text style={styles.tipItem}>• Show different angles</Text>
-                <Text style={styles.tipItem}>• Avoid heavy filters</Text>
-              </View>
             </View>
           )}
         </View>
@@ -771,6 +965,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  strategyBox: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.primary,
+  },
+  strategyLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  strategyText: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+  },
 
   notesBox: {
     backgroundColor: COLORS.surface,
@@ -803,4 +1016,83 @@ const styles = StyleSheet.create({
   },
   tipsTitle: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary, marginBottom: SPACING.sm },
   tipItem: { fontSize: 12, color: COLORS.textMuted, marginBottom: 4 },
+  // Preview Staging
+  previewContainer: {
+    marginBottom: SPACING.md,
+  },
+  previewLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.sm,
+  },
+  previewScroll: {
+    flexDirection: 'row',
+  },
+  previewItem: {
+    width: 80,
+    height: 100,
+    marginRight: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: COLORS.surfaceLight,
+  },
+  previewRemove: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewRemoveText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+
+  // Actions
+  actionRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  outlineButton: {
+    flex: 1,
+    paddingVertical: SPACING.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: 'transparent',
+  },
+  outlineButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  primaryButton: {
+    flex: 2,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    ...SHADOWS.md,
+  },
+  primaryButtonGradient: {
+    paddingVertical: SPACING.lg,
+    alignItems: 'center',
+    width: '100%',
+  },
+  primaryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
 });

@@ -20,8 +20,10 @@ from PIL import Image as PILImage
 from app.config import settings
 from app.ai_providers import GoogleProvider, OpenAIProvider, AIProvider
 from app.ai_prompts import (
-    USER_PROFILE_PROMPT, 
-    WARDROBE_ANALYSIS_PROMPT,
+    USER_PROFILE_PROMPT,
+    WARDROBE_ANALYSIS_PROMPT_GENERAL,
+    WARDROBE_ANALYSIS_PROMPT_MALE,
+    WARDROBE_ANALYSIS_PROMPT_FEMALE,
     RECOMMENDATION_PROMPT,
     VIRTUAL_TRYON_PROMPT
 )
@@ -147,25 +149,45 @@ class AIService:
         provider_name = (settings.LLM_PROVIDER or "google").lower()
         
         print(f"\n🤖 Initializing AI Provider: {provider_name}")
+        print(f"   DEBUG: LLM_MODEL={settings.LLM_MODEL}")
+        print(f"   DEBUG: IMAGE_MODEL={getattr(settings, 'IMAGE_MODEL', 'N/A')}")
         
         if provider_name == "openai":
+            api_key = settings.OPENAI_API_KEY
+            print(f"   DEBUG: OpenAI Key present? {'Yes' if api_key else 'No'} (Length: {len(api_key) if api_key else 0})")
+            
+            # Use exactly what user configured, but keep an optional fallback for reliability.
+            vision_model = getattr(settings, "OPENAI_VISION_MODEL", None) or getattr(settings, "VISION_MODEL", None) or settings.LLM_MODEL
+            fallback_vision_model = getattr(settings, "OPENAI_VISION_FALLBACK_MODEL", None)
+            enable_fallback = bool(getattr(settings, "OPENAI_VISION_ENABLE_FALLBACK", True))
+
             self.provider = OpenAIProvider(
-                api_key=settings.OPENAI_API_KEY or "",
+                api_key=api_key or "",
                 text_model=settings.LLM_MODEL or "gpt-4o-mini",
                 image_model=getattr(settings, "IMAGE_MODEL", "dall-e-3"),
+                vision_model=vision_model,
+                fallback_vision_model=fallback_vision_model,
+                enable_vision_fallback=enable_fallback,
                 max_concurrency=getattr(settings, "AI_MAX_CONCURRENT_REQUESTS", 4),
                 timeout_seconds=getattr(settings, "AI_OPENAI_TIMEOUT_SECONDS", 60),
             )
         else:  # default: google
+            api_key = settings.GOOGLE_API_KEY
+            print(f"   DEBUG: Google Key present? {'Yes' if api_key else 'No'} (Length: {len(api_key) if api_key else 0})")
+            
             self.provider = GoogleProvider(
-                api_key=settings.GOOGLE_API_KEY or "",
+                api_key=api_key or "",
                 text_model=settings.LLM_MODEL or "gemini-2.0-flash",
                 image_model=getattr(settings, "IMAGE_MODEL", "gemini-2.0-flash-exp")
             )
         
         if not self.provider.is_available:
-            print(f"⚠️ AI Provider '{provider_name}' is not available")
-            print(f"   Check your API key in .env")
+            print(f"⚠️ AI Provider '{provider_name}' IS NOT AVAILABLE")
+            print(f"   Reason: Provider.is_available returned False")
+            if not api_key:
+                print(f"   CRITICAL: API Key is missing for {provider_name}")
+        else:
+             print(f"✅ AI Provider '{provider_name}' initialized successfully")
     
     @property
     def is_available(self) -> bool:
@@ -173,7 +195,11 @@ class AIService:
     
     def _parse_json_response(self, text: str) -> Dict:
         """Parse JSON from LLM response"""
-        text = text.strip()
+        if text is None:
+            return {"raw_response": "", "parse_error": "empty_response"}
+        text = str(text).strip()
+        if not text:
+            return {"raw_response": "", "parse_error": "empty_response"}
         # Remove markdown code blocks
         if text.startswith("```"):
             parts = text.split("```")
@@ -186,14 +212,40 @@ class AIService:
         try:
             return json.loads(text)
         except json.JSONDecodeError as e:
+            # Attempt to extract the first JSON object/array from mixed content
+            def _extract_first_json_blob(s: str) -> Optional[str]:
+                # Prefer object
+                for opener, closer in (("{", "}"), ("[", "]")):
+                    start = s.find(opener)
+                    if start == -1:
+                        continue
+                    depth = 0
+                    for i in range(start, len(s)):
+                        ch = s[i]
+                        if ch == opener:
+                            depth += 1
+                        elif ch == closer:
+                            depth -= 1
+                            if depth == 0:
+                                return s[start:i + 1]
+                return None
+
+            blob = _extract_first_json_blob(text)
+            if blob:
+                try:
+                    return json.loads(blob)
+                except Exception:
+                    pass
+
             print(f"⚠️ JSON parse error: {e}")
-            return {"raw_response": text, "parse_error": str(e)}
+            # Truncate raw_response to keep DB logs sane
+            return {"raw_response": text[:5000], "parse_error": str(e)}
     
     # ----------------------------------------
     # USER IMAGE PROCESSING
     # ----------------------------------------
     
-    async def process_user_images(self, user_id: int, image_paths: Dict[str, str]) -> Dict:
+    async def process_user_images(self, user_id: int, image_paths: Dict[str, str], previous_profile: Optional[Dict] = None) -> Dict:
         """Process user images and generate profile metadata"""
         print(f"\n🤖 Processing user images for user {user_id}")
         print(f"   Provider: {self.provider.name if self.provider else 'none'}")
@@ -215,15 +267,49 @@ class AIService:
             if not images:
                 return await self._placeholder_user_metadata(image_paths)
             
+            # Prepare context
+            context_str = "No previous profile available."
+            if previous_profile:
+                context_str = json.dumps(previous_profile, indent=2)
+                print(f"   📝 Using previous profile context ({len(context_str)} chars)")
+
+            # Format prompt
+            # NOTE: USER_PROFILE_PROMPT contains literal JSON braces in the schema example.
+            # Using str.format() would treat those as template placeholders and can crash with KeyError.
+            # We only need to substitute the previous profile context, so do a safe token replace.
+            prompt = USER_PROFILE_PROMPT.replace("{previous_profile_context}", context_str)
+            if (settings.ENVIRONMENT or "development").lower() != "production":
+                print(f"   🧾 User profile prompt length={len(prompt)} chars (showing first 220)")
+                print(f"   🧾 User profile prompt preview: {prompt[:220]!r}...")
+
             # Analyze with provider
             print(f"   📤 Sending to {self.provider.name}...")
-            result = await self.provider.analyze_images_batch(images, USER_PROFILE_PROMPT)
+            result = await self.provider.analyze_images_batch(images, prompt)
             
             if "error" in result:
                 print(f"   ✗ Error: {result['error']}")
                 return await self._placeholder_user_metadata(image_paths)
             
-            analysis = self._parse_json_response(result.get("text", "{}"))
+            raw_text = result.get("text", "{}")
+            if not raw_text or not raw_text.strip():
+                print(f"⚠️ DEBUG: Received EMPTY response from AI provider. This model might fail with multiple images or prompts.")
+            else:
+                print(f"DEBUG: Raw AI Response (starting): {raw_text[:200]!r}...")
+            
+            analysis = self._parse_json_response(raw_text)
+
+            # Dev-only: log which keys we got / what's missing vs prompt schema
+            if (settings.ENVIRONMENT or "development").lower() != "production":
+                expected_top = {"physical_attributes", "facial_features", "style_assessment", "summary_points"}
+                got_top = set(analysis.keys()) if isinstance(analysis, dict) else set()
+                missing_top = sorted(list(expected_top - got_top))
+                print(f"   🧩 User profile parsed top-level keys: {sorted(list(got_top))[:30]}")
+                if missing_top:
+                    print(f"   ⚠️ Missing top-level keys from user profile JSON: {missing_top}")
+                try:
+                    print(f"   🧩 User profile JSON preview: {json.dumps(analysis, ensure_ascii=False)[:900]}...")
+                except Exception:
+                    pass
             
             # Build response
             metadata = {}
@@ -261,7 +347,11 @@ class AIService:
                 "recommended_styles": ["casual", "smart casual"],
                 "style_notes": "Configure AI provider for personalized analysis"
             },
-            "confidence_scores": {"overall_confidence": 0}
+            "summary_points": [
+                "This is a placeholder summary point.",
+                "Configure the AI provider to get real analysis.",
+                "The system will generate personalized advice here."
+            ]
         }
         
         metadata = {img_type: {"profile_analysis": placeholder, "model_used": "placeholder"} 
@@ -273,9 +363,10 @@ class AIService:
     # WARDROBE PROCESSING
     # ----------------------------------------
     
-    async def process_wardrobe_images(self, image_path: str) -> Dict:
+    async def process_wardrobe_images(self, image_path: str, gender: Optional[str] = None) -> Dict:
         """Process wardrobe image and extract clothing metadata"""
         print(f"\n🤖 Processing wardrobe image: {image_path}")
+        print(f"   Gender context: {gender or 'Not specified'}")
         
         if not self.is_available:
             return self._placeholder_wardrobe_metadata()
@@ -287,17 +378,101 @@ class AIService:
 
             img = compress_image(img, max_size=1024)
             
-            print(f"   📤 Sending to {self.provider.name}...")
-            result = await self.provider.analyze_image(img, WARDROBE_ANALYSIS_PROMPT)
+            # Select prompt based on gender
+            prompt = WARDROBE_ANALYSIS_PROMPT_GENERAL
+            if gender:
+                g = gender.lower()
+                if g in ["male", "man", "boy"]:
+                    prompt = WARDROBE_ANALYSIS_PROMPT_MALE
+                elif g in ["female", "woman", "girl"]:
+                    prompt = WARDROBE_ANALYSIS_PROMPT_FEMALE
+            
+            print(f"   📤 Sending to {self.provider.name} (with {gender if gender else 'general'} prompt)...")
+            result = await self.provider.analyze_image(img, prompt)
             
             if "error" in result:
-                print(f"   ✗ Error: {result['error']}")
-                return self._placeholder_wardrobe_metadata()
-            
-            metadata = self._parse_json_response(result.get("text", "{}"))
-            metadata["processing_timestamp"] = datetime.utcnow().isoformat()
-            metadata["model_used"] = result.get("model", self.provider.name)
-            metadata["provider"] = self.provider.name
+                # Do NOT silently fall back to placeholder for wardrobe; it will get saved as "unknown".
+                # Instead, return a parse_error so the task marks the wardrobe item as FAILED.
+                err = str(result.get("error"))
+                print(f"   ✗ Error: {err}")
+                return {
+                    "clothing_analysis": {
+                        "raw_response": (result.get("text") or "")[:2000],
+                        "parse_error": "ai_error",
+                        "ai_error": err,
+                        "model_used": result.get("model", self.provider.name),
+                        "provider": self.provider.name,
+                        "api_used": result.get("api", "unknown"),
+                    }
+                }
+
+            raw_text = result.get("text", "")
+            api_used = result.get("api", "unknown")
+            model_used = result.get("model", self.provider.name)
+
+            # Debug logging (truncate to avoid huge logs)
+            if (settings.ENVIRONMENT or "development").lower() != "production":
+                preview = (raw_text or "").strip().replace("\n", " ")[:800]
+                print(f"   🧾 LLM raw output ({api_used}, model={model_used}) preview: {preview!r}")
+
+            parsed = self._parse_json_response(raw_text)
+            if not isinstance(parsed, dict):
+                parsed = {"raw_response": (raw_text or "")[:5000], "parse_error": "non_object_json"}
+
+            # Normalize/ensure expected top-level keys exist (don’t crash UI)
+            # If model returned wrapper like {"clothing_analysis": {...}}, unwrap it.
+            if "clothing_analysis" in parsed and isinstance(parsed.get("clothing_analysis"), dict):
+                parsed = parsed["clothing_analysis"]
+
+            # Normalize keys across prompt variants so UI can display consistently
+            # (e.g., male prompt uses collar_type; UI expects neckline)
+            if isinstance(parsed, dict):
+                if "neckline" not in parsed and "collar_type" in parsed:
+                    parsed["neckline"] = parsed.get("collar_type")
+                if "texture" not in parsed and "material_texture" in parsed:
+                    parsed["texture"] = parsed.get("material_texture")
+                if "fit_type" not in parsed and "fit" in parsed:
+                    parsed["fit_type"] = parsed.get("fit")
+                # normalize garmentType/garment_type
+                if "garment_type" not in parsed and "garmentType" in parsed:
+                    parsed["garment_type"] = parsed.get("garmentType")
+                # ensure summary_text exists if only points exist
+                if not parsed.get("summary_text") and isinstance(parsed.get("summary_points"), list):
+                    parsed["summary_text"] = "\n".join([str(x) for x in parsed.get("summary_points", []) if x])
+
+                # Dev-only: report missing keys vs prompt schema (not all are required, but helps debugging)
+                if (settings.ENVIRONMENT or "development").lower() != "production":
+                    expected = {
+                        "is_fashion_item", "garment_type", "category", "color",
+                        "pattern", "material", "fit_type", "style",
+                        "occasion", "season",
+                        "formality_level", "versatility_score", "statement_piece",
+                        "styling_suggestions",
+                        "description",
+                    }
+                    got = set(parsed.keys())
+                    missing = sorted(list(expected - got))
+                    print(f"   🧩 Wardrobe parsed keys count={len(got)} missing_required_like={len(missing)}")
+                    if missing:
+                        print(f"   ⚠️ Wardrobe missing (schema-ish) keys: {missing}")
+
+            # Add meta fields for traceability
+            parsed["processing_timestamp"] = datetime.utcnow().isoformat()
+            parsed["model_used"] = model_used
+            parsed["provider"] = self.provider.name
+            parsed["api_used"] = api_used
+
+            # Log parsed keys for debugging
+            if (settings.ENVIRONMENT or "development").lower() != "production":
+                keys = sorted(list(parsed.keys()))[:40]
+                print(f"   🧩 Parsed wardrobe JSON keys (first 40): {keys}")
+                try:
+                    snippet = json.dumps(parsed, ensure_ascii=False)[:800]
+                    print(f"   🧩 Parsed wardrobe JSON preview: {snippet}...")
+                except Exception:
+                    pass
+
+            metadata = parsed
             
             print(f"   ✓ Wardrobe analysis complete")
             return {"clothing_analysis": metadata}
@@ -404,7 +579,12 @@ class AIService:
                     "type": clothing_data.get("garment_type") or item.get("dress_type", "unknown"),
                     "color": clothing_data.get("color") or item.get("color", "unknown"),
                     "style": clothing_data.get("style") or item.get("style", "unknown"),
-                    "category": clothing_data.get("category", "unknown")
+                    "category": clothing_data.get("category", "unknown"),
+                    "material": clothing_data.get("material", "unknown"),
+                    "fit": clothing_data.get("fit_type", "unknown"),
+                    "season": clothing_data.get("season", []),
+                    "occasion": clothing_data.get("occasion", []),
+                    "description": clothing_data.get("description") or clothing_data.get("summary_text", "")[:200]
                 }
                 
                 # Include vector relevance score if available
@@ -431,6 +611,35 @@ class AIService:
             recommendations["model_used"] = self.provider.name
             recommendations["items_considered"] = len(filtered_items)
             
+            rec_outfits = recommendations.get("recommended_outfits", [])
+            if not isinstance(rec_outfits, list):
+                rec_outfits = []
+                recommendations["recommended_outfits"] = rec_outfits
+
+            # If LLM returns no outfits (common when wardrobe is missing required pieces),
+            # generate a minimal, honest fallback using the best-matching items.
+            def _looks_like_placeholder(outfits: list) -> bool:
+                if not outfits:
+                    return True
+                # Classic placeholder shape (from _placeholder_recommendations)
+                if len(outfits) == 1 and isinstance(outfits[0], dict):
+                    o = outfits[0]
+                    if (
+                        (o.get("outfit_name") == "Default Recommendation")
+                        and (o.get("wardrobe_item_ids") in ([], None))
+                        and (o.get("confidence_score") in (0, 0.0, None))
+                    ):
+                        return True
+                # If ALL outfits have no item ids, treat as unusable.
+                for o in outfits:
+                    if isinstance(o, dict) and o.get("wardrobe_item_ids"):
+                        return False
+                return True
+
+            if _looks_like_placeholder(rec_outfits):
+                rec_outfits = self._fallback_recommendation_outfits(query=query, wardrobe_items=filtered_items)
+                recommendations["recommended_outfits"] = rec_outfits
+
             print(f"   ✓ Generated {len(recommendations.get('recommended_outfits', []))} outfits")
             
             # Generate try-on images if user image available
@@ -475,6 +684,105 @@ class AIService:
             "generated_images": [],
             "metadata": {"query_understanding": query, "note": "AI not configured"}
         }
+
+    def _fallback_recommendation_outfits(self, *, query: str, wardrobe_items: List[Dict]) -> List[Dict]:
+        """
+        Build a best-effort set of outfits when the LLM returns zero outfits.
+        This MUST be honest (no invented wardrobe items) and should guide the user via missing_items.
+        """
+        q = (query or "").lower()
+        want_gym = any(k in q for k in ["gym", "workout", "training", "athleisure", "fitness"])
+
+        def clothing(item: Dict) -> Dict:
+            md = item.get("metadata") or {}
+            ca = md.get("clothing_analysis")
+            return ca if isinstance(ca, dict) else (md if isinstance(md, dict) else {})
+
+        def norm(s: str) -> str:
+            return (s or "").strip().lower()
+
+        def is_bottom(it: Dict) -> bool:
+            c = clothing(it)
+            cat = norm(c.get("category"))
+            if cat in ["bottom", "pants", "trousers", "lower"]:
+                return True
+            gt = norm(c.get("garment_type") or it.get("dress_type") or "")
+            return any(k in gt for k in ["pants", "trouser", "jean", "short", "jogger", "legging", "track"])
+
+        def is_top(it: Dict) -> bool:
+            c = clothing(it)
+            cat = norm(c.get("category"))
+            if cat in ["top", "upper"]:
+                return True
+            gt = norm(c.get("garment_type") or it.get("dress_type") or "")
+            return any(k in gt for k in ["shirt", "t-shirt", "tshirt", "tee", "kurta", "hoodie", "sweater", "jacket", "coat"])
+
+        def is_gymish(it: Dict) -> bool:
+            c = clothing(it)
+            style = norm(c.get("style"))
+            occ = c.get("occasion") or []
+            occs = [norm(x) for x in occ] if isinstance(occ, list) else [norm(str(occ))]
+            return ("athleisure" in style) or ("gym" in occs) or ("workout" in occs) or ("training" in occs)
+
+        # Prefer items that already match gym-ish if query is gym.
+        candidates = wardrobe_items or []
+        gym_candidates = [it for it in candidates if is_gymish(it)]
+        pool = gym_candidates if (want_gym and gym_candidates) else candidates
+
+        tops = [it for it in pool if is_top(it)]
+        bottoms = [it for it in pool if is_bottom(it)]
+
+        # Choose best top/bottom by order (already relevance-ranked upstream).
+        top = tops[0] if tops else (pool[0] if pool else None)
+        bottom = bottoms[0] if bottoms else None
+
+        outfits: List[Dict] = []
+        used_ids = []
+        if top and top.get("id"):
+            used_ids.append(int(top["id"]))
+        if bottom and bottom.get("id") and (not top or bottom.get("id") != top.get("id")):
+            used_ids.append(int(bottom["id"]))
+
+        missing = []
+        if want_gym:
+            if not bottom:
+                missing.append("Gym bottoms (joggers/shorts/track pants)")
+            missing.extend(["Training sneakers", "Sports socks"])
+        else:
+            if not bottom and top:
+                missing.append("Bottoms that match this top")
+
+        items_desc = " + ".join([f"Item {i}" for i in used_ids]) if used_ids else "No matching wardrobe items found"
+
+        # Outfit 1: best effort
+        outfits.append({
+            "outfit_id": 1,
+            "outfit_name": "Best Match (Partial if needed)",
+            "wardrobe_item_ids": used_ids,
+            "items_description": items_desc,
+            "style_reasoning": "Built from the closest matching items available in your wardrobe for this request.",
+            "missing_items": missing,
+            "styling_tips": ["Add the missing basics to complete the look."],
+            "occasion_suitability": 6 if used_ids else 1,
+            "confidence_score": 0.4 if used_ids else 0.1,
+        })
+
+        # Outfit 2/3: optional alternatives (top-only variants) if we have multiple tops
+        alt_tops = [it for it in tops[1:3] if it.get("id")]
+        for idx, alt in enumerate(alt_tops, start=2):
+            outfits.append({
+                "outfit_id": idx,
+                "outfit_name": f"Alternative {idx-1}",
+                "wardrobe_item_ids": [int(alt["id"])],
+                "items_description": f"Item {int(alt['id'])}",
+                "style_reasoning": "Alternative top option available in your wardrobe.",
+                "missing_items": missing,
+                "styling_tips": ["Add suitable bottoms/shoes to complete this outfit."],
+                "occasion_suitability": 5,
+                "confidence_score": 0.35,
+            })
+
+        return outfits
     
     # ----------------------------------------
     # VIRTUAL TRY-ON

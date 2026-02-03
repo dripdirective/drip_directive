@@ -1,16 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List
 from app.database import get_db
-from app.models import User
+from app.models import User, WardrobeItem
 from app.schemas import WardrobeItemResponse, WardrobeItemWithImages, WardrobeImageResponse
 from app.utils import get_current_active_user
 from app.config import settings
 from app.core.wardrobe import (
     upload_wardrobe_item,
-    get_wardrobe_items,
     get_wardrobe_item_by_id,
-    get_wardrobe_images,
     delete_wardrobe_item
 )
 from app.core.storage import public_file_url
@@ -43,6 +41,13 @@ async def upload_wardrobe_image(
         file.filename
     )
     
+    # Duplicate is reported as success=True with error message by core logic
+    if error == "Duplicate image detected":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Duplicate image detected. You have already uploaded this file."
+        )
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -58,13 +63,18 @@ async def get_items(
     db: Session = Depends(get_db)
 ):
     """Get all wardrobe items with their images"""
-    items = get_wardrobe_items(db, current_user.id)
+    # Avoid N+1: eager load images
+    items = (
+        db.query(WardrobeItem)
+        .options(selectinload(WardrobeItem.images))
+        .filter(WardrobeItem.user_id == current_user.id)
+        .all()
+    )
     result = []
     for item in items:
-        images = get_wardrobe_images(db, item.id)
         item_data = WardrobeItemWithImages.model_validate(item)
         img_models = []
-        for img in images:
+        for img in (item.images or []):
             img_data = WardrobeImageResponse.model_validate(img)
             img_data.image_path = public_file_url(img_data.image_path)
             img_models.append(img_data)
@@ -80,7 +90,12 @@ async def get_item(
     db: Session = Depends(get_db)
 ):
     """Get a specific wardrobe item with images"""
-    item = get_wardrobe_item_by_id(db, current_user.id, item_id)
+    item = (
+        db.query(WardrobeItem)
+        .options(selectinload(WardrobeItem.images))
+        .filter(WardrobeItem.id == item_id, WardrobeItem.user_id == current_user.id)
+        .first()
+    )
     
     if not item:
         raise HTTPException(
@@ -88,10 +103,9 @@ async def get_item(
             detail="Wardrobe item not found"
         )
     
-    images = get_wardrobe_images(db, item.id)
     item_data = WardrobeItemWithImages.model_validate(item)
     img_models = []
-    for img in images:
+    for img in (item.images or []):
         img_data = WardrobeImageResponse.model_validate(img)
         img_data.image_path = public_file_url(img_data.image_path)
         img_models.append(img_data)

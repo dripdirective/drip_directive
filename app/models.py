@@ -89,6 +89,8 @@ class UserProfile(Base):
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
     name = Column(String, nullable=True)
     gender = Column(String, nullable=True)  # male/female/non-binary/unknown (AI-derived or user-provided)
+    age = Column(Integer, nullable=True)
+    marital_status = Column(String, nullable=True)
     height = Column(Float, nullable=True)  # in cm
     weight = Column(Float, nullable=True)  # in kg
     body_type = Column(SQLEnum(BodyType), nullable=True)
@@ -153,6 +155,8 @@ class WardrobeImage(Base):
     wardrobe_item_id = Column(Integer, ForeignKey("wardrobe_items.id"), nullable=False)
     image_path = Column(String, nullable=False)
     image_type = Column(SQLEnum(ImageType), nullable=True)  # front, back, side, etc.
+    original_filename = Column(String, nullable=True)
+    file_size = Column(Integer, nullable=True)  # Size in bytes
     is_original = Column(Boolean, default=True)  # True if original upload, False if cropped/processed
     original_image_id = Column(Integer, ForeignKey("wardrobe_images.id"), nullable=True)  # If cropped, reference original
     created_at = Column(DateTime(timezone=True), server_default=func.now())
