@@ -53,7 +53,7 @@ const ItemDetailModal = ({ visible, item, onClose }) => {
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
         <LinearGradient colors={[COLORS.background, COLORS.backgroundLight]} style={StyleSheet.absoluteFill} />
-        
+
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.modalContent}>
             {/* Header */}
@@ -109,20 +109,20 @@ const ItemDetailModal = ({ visible, item, onClose }) => {
                       </View>
                     </View>
                   )}
-                  <DetailRow 
-                    icon="📊" 
-                    label="Formality" 
-                    value={metadata.formality_level ? `${metadata.formality_level}/10` : null} 
+                  <DetailRow
+                    icon="📊"
+                    label="Formality"
+                    value={metadata.formality_level ? `${metadata.formality_level}/10` : null}
                   />
-                  <DetailRow 
-                    icon="🔄" 
-                    label="Versatility" 
-                    value={metadata.versatility_score ? `${metadata.versatility_score}/10` : null} 
+                  <DetailRow
+                    icon="🔄"
+                    label="Versatility"
+                    value={metadata.versatility_score ? `${metadata.versatility_score}/10` : null}
                   />
-                  <DetailRow 
-                    icon="⭐" 
-                    label="Statement Piece" 
-                    value={metadata.statement_piece !== undefined ? (metadata.statement_piece ? 'Yes' : 'No') : null} 
+                  <DetailRow
+                    icon="⭐"
+                    label="Statement Piece"
+                    value={metadata.statement_piece !== undefined ? (metadata.statement_piece ? 'Yes' : 'No') : null}
                   />
                 </View>
 
@@ -264,7 +264,7 @@ const WardrobeItemCard = ({ item, onDelete, onProcess, processing, onViewDetails
   };
 
   const status = getStatusStyle(item.processing_status);
-  
+
   // Prefer AI-detected garment type (e.g., "saree") over the DB enum (which may default to "other")
   const displayNameRaw =
     (metadata && (metadata.garment_type || metadata.garmentType)) ||
@@ -349,7 +349,7 @@ const WardrobeItemCard = ({ item, onDelete, onProcess, processing, onViewDetails
                 ))}
               </View>
             )}
-            
+
             {/* View Full Details Button */}
             <TouchableOpacity
               style={styles.viewDetailsButton}
@@ -704,7 +704,7 @@ export default function WardrobeScreen() {
       </ScrollView>
 
       <FlowNavBar
-        prev={{ route: 'UserImages', label: 'Back: Photos', icon: '📸', enabled: true }}
+        prev={{ route: 'Me', label: 'Back: Me', icon: '👤', enabled: true }}
         next={{
           route: 'Recommendations',
           label: analyzedCount >= 2 ? 'Next: Style AI' : 'Analyze 2 items first',
@@ -1043,7 +1043,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 4,
   },
-  
+
   // Chips
   chipsContainer: {
     flexDirection: 'row',

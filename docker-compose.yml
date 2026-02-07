@@ -14,7 +14,7 @@ services:
     volumes:
       # Persistent data volumes
       - ./uploads:/app/uploads
-      - ./chroma_data:/app/chroma_data  # Vector database storage
+      - ./chroma_data:/app/chroma_data # Vector database storage
     environment:
       # Override ChromaDB path for Docker
       - CHROMADB_PATH=/app/chroma_data
@@ -27,7 +27,7 @@ services:
       - AI_OPENAI_TIMEOUT_SECONDS=${AI_OPENAI_TIMEOUT_SECONDS:-60}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -40,9 +40,8 @@ services:
     environment:
       - API_BASE_URL=http://localhost:8000
     volumes:
-      - ./frontend/services:/app/services
-      - ./frontend/screens:/app/screens
-      - ./frontend/config:/app/config
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - backend
     restart: unless-stopped

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import {
   View,
   Text,
@@ -99,18 +100,18 @@ const CustomModal = ({ visible, onClose, title, children }) => {
             <BlurView intensity={20} style={StyleSheet.absoluteFill} tint="dark" />
           </Animated.View>
         </TouchableOpacity>
-        
+
         <Animated.View style={[
-          styles.modalContainer, 
+          styles.modalContainer,
           { transform: [{ translateY: slideAnim }] }
         ]}>
           {/* Glassmorphic Background */}
           {Platform.OS === 'web' ? (
-             <LinearGradient colors={[COLORS.surface, COLORS.background]} style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={[COLORS.surface, COLORS.background]} style={StyleSheet.absoluteFill} />
           ) : (
             <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
           )}
-          
+
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{title}</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -145,7 +146,7 @@ const AboutModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="target" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>How it works</Text>
-      
+
       {[
         { num: 1, title: 'Build your profile', desc: 'Tell us your body type, skin tone, location, and style preferences.' },
         { num: 2, title: 'Upload & analyze photos', desc: 'Upload a few photos and get an AI style profile with color recommendations.' },
@@ -207,7 +208,7 @@ const ContactModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="email-outline" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>Get in touch</Text>
-      
+
       <TouchableOpacity style={styles.contactCard} onPress={() => openLink('mailto:dripdirectiveai@gmail.com')} activeOpacity={0.85}>
         <View style={styles.contactIconWrap}>
           <MaterialCommunityIcons name="email" size={24} color={COLORS.primary} />
@@ -225,7 +226,7 @@ const ContactModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="share-variant-outline" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>Follow us</Text>
-      
+
       <TouchableOpacity style={styles.contactCard} onPress={() => openLink('https://www.instagram.com/dripdirectiveai')} activeOpacity={0.85}>
         <View style={[styles.contactIconWrap, { backgroundColor: '#E1306C15', borderColor: '#E1306C30' }]}>
           <FontAwesome name="instagram" size={24} color="#E1306C" />
@@ -254,12 +255,12 @@ const ContactModal = ({ visible, onClose }) => (
         <MaterialCommunityIcons name="account-group-outline" size={24} color="#FFF" />
       </LinearGradient>
       <Text style={styles.modalSectionTitle}>Founders</Text>
-      
+
       <View style={styles.founderRow}>
         <FounderAvatar name="Tasnim Iram" />
         <View style={{ flex: 1 }}>
           <Text style={styles.founderName}>Tasnim Iram</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.linkedInBtn}
             onPress={() => openLink('https://www.linkedin.com/in/tasnim-iram-55457822/')}
           >
@@ -273,7 +274,7 @@ const ContactModal = ({ visible, onClose }) => (
         <FounderAvatar name="Suvom Shaw" />
         <View style={{ flex: 1 }}>
           <Text style={styles.founderName}>Suvom Shaw</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.linkedInBtn}
             onPress={() => openLink('https://www.linkedin.com/in/suvomshaw/')}
           >
@@ -287,6 +288,7 @@ const ContactModal = ({ visible, onClose }) => (
 );
 
 export default function LandingScreen({ navigation }) {
+  const { isAuthenticated } = useAuth(); // Fix: Get isAuthenticated from context
   const [showAbout, setShowAbout] = useState(false);
   const [showContact, setShowContact] = useState(false);
 
@@ -367,27 +369,27 @@ export default function LandingScreen({ navigation }) {
       <Animated.View style={[styles.wrapper, { opacity: fadeAnim }]}>
         {/* Top navigation */}
         <View style={styles.topNav}>
-          <TouchableOpacity 
-            style={styles.navBtn} 
-            onPress={() => setShowAbout(true)} 
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => setShowAbout(true)}
             activeOpacity={0.85}
           >
-            <LinearGradient 
-              colors={['#2563EB', '#1D4ED8']} 
+            <LinearGradient
+              colors={['#2563EB', '#1D4ED8']}
               style={styles.navBtnGrad}
             >
               <MaterialCommunityIcons name="book-open-page-variant" size={18} color="#FFFFFF" />
               <Text style={styles.navBtnText}>About Us</Text>
             </LinearGradient>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.navBtn} 
-            onPress={() => setShowContact(true)} 
+
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => setShowContact(true)}
             activeOpacity={0.85}
           >
-            <LinearGradient 
-              colors={['#22C55E', '#16A34A']} 
+            <LinearGradient
+              colors={['#22C55E', '#16A34A']}
               style={styles.navBtnGrad}
             >
               <MaterialCommunityIcons name="card-account-mail" size={18} color="#FFFFFF" />
@@ -734,7 +736,7 @@ const styles = StyleSheet.create({
   },
   modalSectionTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary, marginBottom: SPACING.sm },
   modalText: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 22, textAlign: 'center' },
-  
+
   bulletRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
@@ -816,7 +818,7 @@ const styles = StyleSheet.create({
   avatarGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
   founderName: { fontSize: 16, fontWeight: '900', color: COLORS.textPrimary, marginBottom: 4 },
-  
+
   linkedInBtn: {
     flexDirection: 'row',
     alignItems: 'center',

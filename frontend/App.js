@@ -6,9 +6,10 @@ import { createURL } from 'expo-linking';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
+import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
+import ResetPasswordScreen from './screens/ResetPasswordScreen';
 import LandingScreen from './screens/LandingScreen';
-import ProfileScreen from './screens/ProfileScreen';
-import UserImagesScreen from './screens/UserImagesScreen';
+import MeScreen from './screens/MeScreen';
 import WardrobeScreen from './screens/WardrobeScreen';
 import RecommendationsScreen from './screens/RecommendationsScreen';
 
@@ -26,13 +27,13 @@ const linking = {
       Landing: '',
       Login: 'login',
       Signup: 'signup',
+      ForgotPassword: 'forgot-password',
+      ResetPassword: 'reset-password',
       Main: {
         screens: {
-          Profile: 'profile',
-          UserImages: 'photos',
+          Me: 'me',
           Wardrobe: 'wardrobe',
           Recommendations: 'style-ai',
-
         },
       },
     },
@@ -58,19 +59,11 @@ function MainTabs() {
       }}
     >
       <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
+        name="Me"
+        component={MeScreen}
         options={{
-          title: 'Profile',
+          title: 'Me',
           tabBarIcon: ({ focused }) => <TabIcon icon="👤" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="UserImages"
-        component={UserImagesScreen}
-        options={{
-          title: 'Photos',
-          tabBarIcon: ({ focused }) => <TabIcon icon="📸" focused={focused} />,
         }}
       />
       <Tab.Screen
@@ -85,11 +78,10 @@ function MainTabs() {
         name="Recommendations"
         component={RecommendationsScreen}
         options={{
-          title: 'Style AI',
+          title: 'Style Studio',
           tabBarIcon: ({ focused }) => <TabIcon icon="✨" focused={focused} />,
         }}
       />
-
     </Tab.Navigator>
   );
 }
@@ -100,6 +92,8 @@ function AuthStack() {
       <Stack.Screen name="Landing" component={LandingScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Signup" component={SignupScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </Stack.Navigator>
   );
 }
@@ -119,7 +113,6 @@ function AppNavigator() {
           />
           <Text style={styles.loadingTitle}>Dripdirective</Text>
           <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
-          <Text style={styles.loadingText}>Loading your style...</Text>
         </View>
       </View>
     );
@@ -138,9 +131,12 @@ function AppNavigator() {
           <Stack.Screen
             name="Main"
             component={MainTabs}
-            options={{
+            options={({ navigation }) => ({
               headerTitle: () => (
-                <View style={styles.headerTitleContainer}>
+                <TouchableOpacity
+                  style={styles.headerTitleContainer}
+                  onPress={() => navigation.navigate('Me')}
+                >
                   <Image
                     source={require('./assets/dripdirective_logo.jpg')}
                     style={styles.headerLogo}
@@ -148,7 +144,7 @@ function AppNavigator() {
                     accessibilityLabel="Dripdirective logo"
                   />
                   <Text style={styles.headerTitle}>Dripdirective</Text>
-                </View>
+                </TouchableOpacity>
               ),
               headerStyle: styles.header,
               headerTintColor: COLORS.textPrimary,
@@ -160,7 +156,7 @@ function AppNavigator() {
                   <Text style={styles.logoutText}>Logout</Text>
                 </TouchableOpacity>
               ),
-            }}
+            })}
           />
         </Stack.Navigator>
       ) : (
@@ -200,11 +196,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.textPrimary,
     letterSpacing: -0.5,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: COLORS.textSecondary,
   },
 
   // Header
