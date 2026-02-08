@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import {
     View,
     Text,
@@ -11,6 +13,7 @@ import {
     TextInput,
     Platform,
     KeyboardAvoidingView,
+    Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
@@ -18,6 +21,80 @@ import { profileAPI, userImagesAPI, aiProcessingAPI } from '../services/api';
 import { API_BASE_URL } from '../config/api';
 import FlowNavBar from '../components/FlowNavBar';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../theme/colors';
+
+const { width } = Dimensions.get('window');
+
+const VibeSyncCard = ({ vibesyncData }) => {
+    const navigation = useNavigation();
+    const hasResults = !!vibesyncData;
+    const archetype = vibesyncData?.archetype ?
+        (vibesyncData.archetype.charAt(0).toUpperCase() + vibesyncData.archetype.slice(1)) : 'Style DNA';
+
+    // Archetype names map (simple version)
+    const displayArchetype = vibesyncData?.archetype === 'architect' ? 'The Architect' :
+        vibesyncData?.archetype === 'bohemian' ? 'The Bohemian' :
+            vibesyncData?.archetype === 'minimalist' ? 'The Minimalist' :
+                vibesyncData?.archetype === 'maximalist' ? 'The Maximalist' : archetype;
+
+    return (
+        <TouchableOpacity
+            style={styles.vibeCard}
+            activeOpacity={0.95}
+            onPress={() => {
+                if (hasResults) {
+                    navigation.navigate('VibeSync', {
+                        screen: 'VibeSyncResults',
+                        params: { finalScores: vibesyncData.scores, saved: true },
+                    });
+                } else {
+                    navigation.navigate('VibeSync', { screen: 'VibeSyncWelcome' });
+                }
+            }}
+        >
+            <LinearGradient
+                colors={hasResults ? ['#2C3E50', '#000000'] : ['#1a1a2e', '#16213e', '#0f3460']}
+                style={styles.vibeGradient}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            >
+                <View style={styles.vibeBorder}>
+                    <View style={styles.vibeContent}>
+                        <View style={styles.vibeIconContainer}>
+                            <Text style={{ fontSize: 32 }}>{hasResults ? '✨' : '🧬'}</Text>
+                        </View>
+                        <View style={{ flex: 1, gap: 4 }}>
+                            <Text style={styles.vibeTitle}>{hasResults ? displayArchetype : 'Style DNA'}</Text>
+                            <Text style={styles.vibeSubtitle}>
+                                {hasResults ? 'View your analysis & wardrobe' : 'Unlock your true fashion identity'}
+                            </Text>
+
+                            <View style={styles.vibeTagContainer}>
+                                {hasResults ? (
+                                    <>
+                                        <View style={styles.vibeTag}>
+                                            <Text style={styles.vibeTagText}>Analysis Ready</Text>
+                                        </View>
+                                    </>
+                                ) : (
+                                    <>
+                                        <View style={styles.vibeTag}>
+                                            <Text style={styles.vibeTagText}>AI Analysis</Text>
+                                        </View>
+                                        <View style={styles.vibeTag}>
+                                            <Text style={styles.vibeTagText}>Curated Outfits</Text>
+                                        </View>
+                                    </>
+                                )}
+                            </View>
+                        </View>
+                        <View style={styles.vibeArrow}>
+                            <Ionicons name="arrow-forward" size={24} color={hasResults ? "#4cd137" : "#e94560"} />
+                        </View>
+                    </View>
+                </View>
+            </LinearGradient>
+        </TouchableOpacity>
+    );
+};
 
 // --- Select options ---
 const BODY_TYPES = [
@@ -646,6 +723,7 @@ export default function MeScreen() {
     if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
 
     const profileDraft = { ...profile, additional_info: extractUserStyleText(additionalInfoObj || profile?.additional_info) };
+    const firstImage = images.length > 0 ? (images[0]?.image_path?.startsWith('http') ? images[0].image_path : `${API_BASE_URL}/${images[0].image_path}`) : null;
 
     return (
         <View style={styles.container}>
@@ -654,150 +732,538 @@ export default function MeScreen() {
             <ImagePreviewModal visible={showImageModal} imageUrl={selectedImageUrl} onClose={() => setShowImageModal(false)} />
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                <View style={styles.content}>
-                    <View style={styles.header}>
-                        <Text style={styles.title}>Me</Text>
-                        <Text style={styles.subtitle}>Your profile + style photos</Text>
+                {/* Hero Header */}
+                <View style={styles.heroHeader}>
+                    <LinearGradient
+                        colors={[COLORS.primary, COLORS.primaryDark]}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                        style={styles.heroGradient}
+                    >
+                        <View style={styles.heroContent}>
+                            <View style={styles.avatarContainer}>
+                                {firstImage ? (
+                                    <Image source={{ uri: firstImage }} style={styles.avatar} contentFit="cover" />
+                                ) : (
+                                    <View style={styles.avatarPlaceholder}>
+                                        <Text style={styles.avatarInitial}>{profile?.name ? profile.name[0].toUpperCase() : '?'}</Text>
+                                    </View>
+                                )}
+                                <TouchableOpacity style={styles.editAvatarBtn} onPress={pickImages}>
+                                    <Ionicons name="camera" size={16} color="white" />
+                                </TouchableOpacity>
+                            </View>
+                            <Text style={styles.heroName}>{profile?.name || 'Welcome'}</Text>
+                            <Text style={styles.heroSubtitle}>
+                                {profile?.occupation || 'Fashion Enthusiast'} • {profile?.state ? `${profile.state}, ` : ''}{profile?.country}
+                            </Text>
+
+                            <TouchableOpacity style={styles.heroEditBtn} onPress={() => setShowEdit(true)}>
+                                <Text style={styles.heroEditBtnText}>Edit Profile</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </LinearGradient>
+                </View>
+
+                <View style={styles.mainContent}>
+                    {/* Stats Grid */}
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>My Stats</Text>
+                        <View style={styles.statsGrid}>
+                            <StatItem icon="📏" label="Height" value={profile?.height ? `${profile.height} cm` : '--'} />
+                            <StatItem icon="⚖️" label="Weight" value={profile?.weight ? `${profile.weight} kg` : '--'} />
+                            <StatItem icon="🎂" label="Age" value={profile?.age || '--'} />
+                            <StatItem icon="👤" label="Body" value={profile?.body_type || '--'} />
+                            <StatItem icon="🎨" label="Skin" value={profile?.face_tone || '--'} />
+                            <StatItem icon="👫" label="Gender" value={profile?.gender || '--'} />
+                        </View>
                     </View>
 
-                    <View style={styles.card}>
-                        <View style={styles.cardHeaderRow}>
-                            <View><Text style={styles.cardTitle}>Profile</Text><Text style={styles.cardSubtle}>Details</Text></View>
-                            <View style={[styles.pill, { backgroundColor: statusPill.bg }]}><Text style={styles.pillText}>{statusPill.text}</Text></View>
+                    {/* About / Style Prefs */}
+                    {profile?.additional_info && (
+                        <View style={styles.sectionContainer}>
+                            <Text style={styles.sectionTitle}>Style Preferences</Text>
+                            <View style={styles.infoCard}>
+                                <Text style={styles.infoText}>{extractUserStyleText(profile.additional_info)}</Text>
+                            </View>
                         </View>
-                        <View style={styles.profileGrid}>
-                            <Text style={styles.profileText}><Text style={styles.profileLabel}>Name: </Text>{profile?.name}</Text>
-                            <Text style={styles.profileText}><Text style={styles.profileLabel}>Gender: </Text>{profile?.gender}</Text>
+                    )}
+
+                    {/* Profile Details */}
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>Profile Details</Text>
+                        <View style={styles.detailsCard}>
+                            {[
+                                { label: 'Name', value: profile?.name },
+                                { label: 'Gender', value: profile?.gender },
+                                { label: 'Age', value: profile?.age },
+                                { label: 'Height', value: profile?.height ? `${profile.height} cm` : null },
+                                { label: 'Weight', value: profile?.weight ? `${profile.weight} kg` : null },
+                                { label: 'Marital Status', value: profile?.marital_status },
+                                { label: 'Occupation', value: profile?.occupation },
+                                { label: 'Body Type', value: profile?.body_type },
+                                { label: 'Skin Tone', value: profile?.face_tone },
+                                { label: 'State', value: profile?.state },
+                                { label: 'Country', value: profile?.country },
+                            ].filter(item => item.value).map((item) => (
+                                <View key={item.label} style={styles.detailRow}>
+                                    <Text style={styles.detailLabel}>{item.label}</Text>
+                                    <Text style={styles.detailValue}>{String(item.value)}</Text>
+                                </View>
+                            ))}
                         </View>
-                        <TouchableOpacity style={styles.editButton} onPress={() => setShowEdit(true)}><Text style={styles.editButtonText}>Edit</Text></TouchableOpacity>
                     </View>
 
-                    <View style={styles.card}>
-                        <View style={styles.cardHeaderRow}>
-                            <Text style={styles.cardTitle}>Photos ({images.length})</Text>
-                            <TouchableOpacity onPress={pickImages}><Text style={styles.ghostButtonText}>+ Add</Text></TouchableOpacity>
+                    {/* Photos */}
+                    <View style={styles.sectionContainer}>
+                        <View style={styles.sectionHeaderRow}>
+                            <Text style={styles.sectionTitle}>My Lookbook ({images.length})</Text>
+                            <TouchableOpacity onPress={pickImages}>
+                                <Text style={styles.actionLink}>+ Add Photo</Text>
+                            </TouchableOpacity>
                         </View>
+
                         {selectedAssets.length > 0 && (
                             <View style={styles.uploadQueue}>
                                 <Text style={styles.uploadText}>{selectedAssets.length} selected</Text>
                                 <TouchableOpacity onPress={uploadSelected} disabled={uploading} style={styles.uploadButton}>
-                                    <Text style={styles.uploadButtonText}>{uploading ? 'Uploading...' : 'Upload Now'}</Text>
+                                    <Text style={styles.uploadButtonText}>{uploading ? 'Uploading...' : 'Upload'}</Text>
                                 </TouchableOpacity>
                             </View>
                         )}
-                        <View style={styles.photoGrid}>
+
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
                             {images.map((item, idx) => {
                                 const uri = item?.image_path ? (item.image_path.startsWith('http') ? item.image_path : `${API_BASE_URL}/${item.image_path}`) : null;
                                 return (
-                                    <View key={item.id || idx} style={styles.photoTile}>
-                                        <TouchableOpacity onPress={() => openImage(uri)} style={{ flex: 1 }}>
-                                            <Image source={{ uri }} style={styles.photoImage} contentFit="cover" />
-                                            <TouchableOpacity style={styles.photoDelete} onPress={() => deletePhoto(item.id)}>
-                                                <Text style={styles.photoDeleteText}>✕</Text>
-                                            </TouchableOpacity>
+                                    <TouchableOpacity key={item.id || idx} onPress={() => openImage(uri)} style={styles.photoCard}>
+                                        <Image source={{ uri }} style={styles.photoImage} contentFit="cover" />
+                                        <TouchableOpacity style={styles.photoDelete} onPress={() => deletePhoto(item.id)}>
+                                            <Ionicons name="close-circle" size={20} color="white" />
                                         </TouchableOpacity>
-                                    </View>
+                                    </TouchableOpacity>
                                 );
                             })}
                             {images.length === 0 && (
-                                <View style={styles.emptyPhotos}>
-                                    <Text style={styles.emptyPhotoText}>No photos yet</Text>
-                                    <TouchableOpacity onPress={pickImages} style={styles.addPhotoButton}>
-                                        <Text style={styles.addPhotoText}>+ Add Photo</Text>
-                                    </TouchableOpacity>
+                                <View style={styles.emptyPhotoCard}>
+                                    <Ionicons name="images-outline" size={32} color={COLORS.textMuted} />
+                                    <Text style={styles.emptyPhotoText}>No photos</Text>
                                 </View>
                             )}
-                        </View>
-                        {pendingCount > 0 && <TouchableOpacity onPress={analyzePending} disabled={processing}><Text>Analyze Pending</Text></TouchableOpacity>}
+                        </ScrollView>
+
+                        {pendingCount > 0 && (
+                            <TouchableOpacity onPress={analyzePending} disabled={processing} style={styles.analyzeBtn}>
+                                {processing ? <ActivityIndicator color="white" /> : <Text style={styles.analyzeBtnText}>Analyze New Photos</Text>}
+                            </TouchableOpacity>
+                        )}
                     </View>
 
-                    {aiProfile?.analysis && <AIProfileCard profile={aiProfile} />}
+                    {/* AI Analysis */}
+                    {aiProfile?.analysis && (
+                        <View style={styles.sectionContainer}>
+                            <AIProfileCard profile={aiProfile} />
+                        </View>
+                    )}
+
+                    {/* VibeSync / Style DNA - Feature Section */}
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>Style DNA</Text>
+                        <VibeSyncCard vibesyncData={additionalInfoObj?.vibesync_results} />
+                    </View>
                 </View>
             </ScrollView>
-            <FlowNavBar next={{ route: 'Wardrobe', label: analyzedCount >= 1 ? 'Next: Wardrobe' : 'Add photos first', icon: '👗', enabled: analyzedCount >= 1 }} />
+            <FlowNavBar next={{ route: 'Wardrobe', label: analyzedCount >= 1 ? 'Go to Wardrobe' : 'Add photos first', icon: '👗', enabled: analyzedCount >= 1 }} />
         </View>
     );
 }
 
+const StatItem = ({ icon, label, value }) => (
+    <View style={styles.statItem}>
+        <Text style={styles.statIcon}>{icon}</Text>
+        <Text style={styles.statValue}>{value}</Text>
+        <Text style={styles.statLabel}>{label}</Text>
+    </View>
+);
+
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
-    scrollContent: { paddingBottom: SPACING.xl },
-    content: { padding: SPACING.lg, paddingBottom: SPACING.xxxl },
+    scrollContent: { paddingBottom: 100 },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { marginBottom: SPACING.lg },
-    title: { fontSize: 28, fontWeight: '900', color: COLORS.textPrimary },
-    subtitle: { fontSize: 13, color: COLORS.textMuted },
-    card: { backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.xl, padding: SPACING.lg, marginBottom: SPACING.lg, ...SHADOWS.sm },
-    cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    cardTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
-    cardSubtle: { fontSize: 12, color: COLORS.textSecondary },
-    pill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: BORDER_RADIUS.full },
-    pillText: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary },
-    profileGrid: { gap: SPACING.sm, marginTop: SPACING.md },
-    editButton: { marginTop: SPACING.md, padding: 10, backgroundColor: COLORS.surfaceHighlight, borderRadius: BORDER_RADIUS.lg },
-    editButtonText: { fontWeight: '900', color: COLORS.textPrimary },
-    photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.md },
-    photoTile: { width: 100, height: 100, backgroundColor: COLORS.surfaceLight, borderRadius: BORDER_RADIUS.lg, overflow: 'hidden' },
-    photoImage: { width: '100%', height: '100%' },
-    photoEmpty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    photoDelete: { position: 'absolute', top: 0, right: 0, padding: 4, backgroundColor: 'rgba(0,0,0,0.5)' },
+
+    // Hero
+    heroHeader: {
+        borderBottomLeftRadius: 30,
+        borderBottomRightRadius: 30,
+        overflow: 'hidden',
+        marginBottom: 20,
+        ...SHADOWS.md,
+    },
+    heroGradient: {
+        paddingTop: 60,
+        paddingBottom: 30,
+        paddingHorizontal: 20,
+        alignItems: 'center',
+    },
+    avatarContainer: {
+        marginBottom: 15,
+        position: 'relative',
+    },
+    avatar: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        borderWidth: 4,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+    avatarPlaceholder: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 4,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+    avatarInitial: {
+        fontSize: 40,
+        color: 'white',
+        fontWeight: 'bold',
+    },
+    editAvatarBtn: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        backgroundColor: COLORS.accent,
+        padding: 8,
+        borderRadius: 20,
+        borderWidth: 2,
+        borderColor: 'white',
+    },
+    heroName: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: 'white',
+        marginTop: 10,
+    },
+    heroSubtitle: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.8)',
+        marginTop: 4,
+        marginBottom: 15,
+    },
+    heroEditBtn: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 20,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    heroEditBtnText: {
+        color: 'white',
+        fontWeight: '600',
+        fontSize: 14,
+    },
+
+    // Content
+    mainContent: {
+        paddingHorizontal: 20,
+    },
+    sectionContainer: {
+        marginBottom: 30,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: COLORS.textPrimary,
+        marginBottom: 15,
+    },
+    sectionHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    actionLink: {
+        color: COLORS.primary,
+        fontWeight: '600',
+        fontSize: 14,
+    },
+
+    // Stats
+    statsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
+        backgroundColor: COLORS.surface,
+        padding: 15,
+        borderRadius: BORDER_RADIUS.lg,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        ...SHADOWS.sm,
+    },
+    statItem: {
+        width: '30%',
+        alignItems: 'center',
+        paddingVertical: 10,
+    },
+    statIcon: {
+        fontSize: 20,
+        marginBottom: 5,
+    },
+    statValue: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: COLORS.textPrimary,
+    },
+    statLabel: {
+        fontSize: 11,
+        color: COLORS.textMuted,
+        marginTop: 2,
+    },
+
+    // Info Card
+    infoCard: {
+        backgroundColor: COLORS.surface,
+        padding: 20,
+        borderRadius: BORDER_RADIUS.lg,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        ...SHADOWS.sm,
+    },
+    infoText: {
+        color: COLORS.textSecondary,
+        lineHeight: 22,
+    },
+    detailsCard: {
+        backgroundColor: COLORS.surface,
+        padding: 16,
+        borderRadius: BORDER_RADIUS.lg,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        gap: 12,
+    },
+    detailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    detailLabel: {
+        color: COLORS.textMuted,
+        fontSize: 12,
+        textTransform: 'uppercase',
+        letterSpacing: 0.4,
+    },
+    detailValue: {
+        color: COLORS.textPrimary,
+        fontSize: 14,
+        fontWeight: '600',
+        maxWidth: '60%',
+        textAlign: 'right',
+    },
+
+    // Photos
+    photoScroll: {
+        marginLeft: -20,
+        marginRight: -20,
+        paddingHorizontal: 20,
+    },
+    photoCard: {
+        width: 120,
+        height: 160,
+        borderRadius: BORDER_RADIUS.md,
+        marginRight: 15,
+        overflow: 'hidden',
+        position: 'relative',
+        ...SHADOWS.sm,
+    },
+    photoImage: {
+        width: '100%',
+        height: '100%',
+    },
+    photoDelete: {
+        position: 'absolute',
+        top: 5,
+        right: 5,
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        borderRadius: 10,
+    },
+    emptyPhotoCard: {
+        width: 120,
+        height: 160,
+        borderRadius: BORDER_RADIUS.md,
+        backgroundColor: COLORS.surfaceLight,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: COLORS.border,
+        borderStyle: 'dashed',
+    },
+    emptyPhotoText: {
+        color: COLORS.textMuted,
+        fontSize: 12,
+        marginTop: 5,
+    },
+    analyzeBtn: {
+        backgroundColor: COLORS.secondary,
+        padding: 15,
+        borderRadius: BORDER_RADIUS.md,
+        alignItems: 'center',
+        marginTop: 15,
+    },
+    analyzeBtnText: {
+        color: 'white',
+        fontWeight: 'bold',
+    },
+
+    // Upload Queue
+    uploadQueue: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#E8F5E9',
+        padding: 10,
+        borderRadius: BORDER_RADIUS.md,
+        marginBottom: 15,
+        borderWidth: 1,
+        borderColor: '#C8E6C9',
+    },
+    uploadText: { color: '#2E7D32', fontWeight: '600' },
+    uploadButton: { backgroundColor: '#2E7D32', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
+    uploadButtonText: { color: 'white', fontWeight: 'bold', fontSize: 12 },
+
+    // VibeSync Card (Premium)
+    vibeCard: {
+        borderRadius: BORDER_RADIUS.xl,
+        overflow: 'hidden',
+        ...SHADOWS.lg,
+    },
+    vibeGradient: {
+        padding: 2,
+    },
+    vibeBorder: {
+        backgroundColor: '#1a1a2e',
+        borderRadius: BORDER_RADIUS.xl - 2,
+        padding: 20,
+    },
+    vibeContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 15,
+    },
+    vibeIconContainer: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    vibeTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: 'white',
+        marginBottom: 4,
+    },
+    vibeSubtitle: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.7)',
+        marginBottom: 10,
+    },
+    vibeTagContainer: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    vibeTag: {
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+    },
+    vibeTagText: {
+        color: 'white',
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    vibeArrow: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        padding: 8,
+        borderRadius: 20,
+    },
+
+    // AI Card styles (kept needed ones)
+    aiCard: {
+        backgroundColor: COLORS.surface,
+        borderRadius: BORDER_RADIUS.lg,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        ...SHADOWS.md,
+    },
+    aiHeaderGradient: {
+        padding: 20,
+    },
+    aiTitle: { fontSize: 22, fontWeight: 'bold', color: 'white' },
+    aiSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.9)' },
+    aiSection: { marginBottom: 20 },
+    aiSectionTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.textPrimary, marginBottom: 12 },
+    aiAttributeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    aiAttributeChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceLight,
+        padding: 8,
+        paddingRight: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    aiAttributeIcon: { fontSize: 20, marginRight: 8 },
+    aiAttributeLabel: { fontSize: 10, color: COLORS.textMuted, textTransform: 'uppercase' },
+    aiAttributeValue: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
+    aiColorTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    aiColorTag: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+    aiStyleTag: { backgroundColor: COLORS.surfaceLight, borderWidth: 1, borderColor: COLORS.border },
+    aiColorTagText: { fontSize: 13, fontWeight: '600', color: COLORS.primary },
+
+    // Modal Styles
+    modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, },
+    modalTitle: { fontSize: 24, fontWeight: 'bold', color: COLORS.textPrimary },
+    closeButton: { padding: 8, backgroundColor: COLORS.surface, borderRadius: 20 },
+    closeButtonText: { fontSize: 16, color: COLORS.textPrimary },
+    formCard: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: COLORS.border, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2, marginBottom: 20 },
+    fieldLabel: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary, marginBottom: 8 },
+    inputContainer: { backgroundColor: COLORS.surfaceLight, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
+    input: { padding: 12, fontSize: 16, color: COLORS.textPrimary },
+    primaryButton: { borderRadius: 30, overflow: 'hidden', ...SHADOWS.md, marginBottom: 30 },
+    primaryButtonGradient: { paddingVertical: 16, alignItems: 'center' },
+    primaryButtonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+    buttonDisabled: { opacity: 0.7 },
+
+    // Select
     selectContainer: { marginBottom: SPACING.md },
-    selectLabel: { fontSize: 12, fontWeight: '800', color: COLORS.textSecondary },
-    selectButton: { padding: SPACING.md, backgroundColor: COLORS.surfaceLight, borderRadius: BORDER_RADIUS.lg, flexDirection: 'row', justifyContent: 'space-between' },
-    selectButtonText: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+    selectLabel: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary, marginBottom: 8 },
+    selectButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.surfaceLight, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
+    selectButtonText: { fontSize: 16, color: COLORS.textPrimary },
     selectArrow: { fontSize: 12, color: COLORS.textMuted },
-    optionsContainer: { marginTop: 6, maxHeight: 200, borderWidth: 1, borderColor: COLORS.border, borderRadius: BORDER_RADIUS.lg, backgroundColor: COLORS.surface },
-    optionItem: { padding: SPACING.md, flexDirection: 'row', justifyContent: 'space-between' },
+    optionsContainer: { marginTop: 8, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, ...SHADOWS.sm, overflow: 'hidden' },
+    optionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
     optionItemSelected: { backgroundColor: COLORS.primary + '20' },
-    optionText: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
-    optionTextSelected: { color: COLORS.primary },
-    checkmark: { color: COLORS.primary },
-    // ... AI Card styles
-    aiCard: { backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.xl, overflow: 'hidden', marginBottom: SPACING.lg },
-    aiHeaderGradient: { padding: SPACING.lg },
-    aiTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
-    aiSubtitle: { fontSize: 12, color: COLORS.textPrimary }, // Made brighter
-    aiSection: { marginBottom: SPACING.md },
-    aiSectionTitle: { fontSize: 14, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 8 },
-    aiAttributeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    aiAttributeChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceLight, padding: 8, borderRadius: 8 },
-    aiAttributeIcon: { marginRight: 5, fontSize: 16 },
-    aiAttributeLabel: { fontSize: 10, color: COLORS.textSecondary, fontWeight: '700' },
-    aiAttributeValue: { fontSize: 13, color: COLORS.textPrimary, fontWeight: '600' },
-    aiColorTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
-    aiColorTag: { padding: 5, backgroundColor: COLORS.surfaceHighlight, borderRadius: 20 },
-    aiColorTagText: { fontSize: 12, color: COLORS.textPrimary },
-    modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', padding: SPACING.lg, marginTop: 40 },
-    modalTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
-    closeButton: { padding: 10 },
-    closeButtonText: { fontSize: 18, color: COLORS.textPrimary },
-    formCard: { padding: SPACING.lg, backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.xl },
-    fieldLabel: { fontSize: 12, fontWeight: '800', marginBottom: 5, color: COLORS.textSecondary },
-    inputContainer: { backgroundColor: COLORS.surfaceLight, borderRadius: BORDER_RADIUS.lg, borderWidth: 1, borderColor: COLORS.border },
-    input: { padding: SPACING.md, fontSize: 15, color: COLORS.textPrimary },
-    primaryButton: { marginTop: 20, borderRadius: BORDER_RADIUS.lg, overflow: 'hidden' },
-    primaryButtonGradient: { padding: 15, alignItems: 'center' },
-    primaryButtonText: { color: COLORS.textPrimary, fontWeight: '900' },
-    row: { flexDirection: 'row' },
-    chipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
-    chip: { padding: 8, backgroundColor: COLORS.primary + '20', borderRadius: 20 },
-    chipText: { fontSize: 12 },
-    imagePreviewContainer: { flex: 1 },
-    imagePreviewHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, paddingTop: 50 },
-    imagePreviewBody: { flex: 1, padding: 20 },
-    imagePreviewImage: { width: '100%', height: '100%' },
+    optionText: { fontSize: 16, color: COLORS.textPrimary },
+    optionTextSelected: { color: COLORS.primary, fontWeight: '600' },
+    checkmark: { color: COLORS.primary, fontWeight: 'bold' },
+
+    chip: { backgroundColor: COLORS.surfaceLight, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginRight: 8, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
+    chipText: { color: COLORS.primary, fontSize: 14, fontWeight: '600' },
+    chipsContainer: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 },
+
+    // Image Preview
+    imagePreviewContainer: { flex: 1, backgroundColor: 'black' },
+    imagePreviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, zIndex: 10 },
+    imagePreviewTitle: { color: 'white', fontSize: 20, fontWeight: 'bold' },
+    imagePreviewBody: { flex: 1, justifyContent: 'center' },
+    imagePreviewImage: { width: '100%', height: '80%' },
     emptyCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    // New styles
-    profileLabel: { color: COLORS.textSecondary, fontWeight: '700' },
-    profileText: { color: COLORS.textPrimary, fontSize: 15, marginBottom: 4 },
-    ghostButtonText: { color: COLORS.primary, fontWeight: '700', fontSize: 14 },
-    uploadQueue: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.surfaceLight, padding: 10, borderRadius: 8, marginBottom: 10 },
-    uploadText: { color: COLORS.textPrimary, fontWeight: '600' },
-    uploadButton: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: COLORS.primary, borderRadius: 6 },
-    uploadButtonText: { color: 'white', fontWeight: '700', fontSize: 12 },
-    photoDeleteText: { color: 'white', fontWeight: 'bold' },
-    emptyPhotos: { width: '100%', padding: 20, alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: COLORS.border, borderRadius: 12 },
-    emptyPhotoText: { color: COLORS.textMuted, marginBottom: 10 },
-    addPhotoButton: { paddingHorizontal: 15, paddingVertical: 8, backgroundColor: COLORS.surfaceLight, borderRadius: 8 },
-    addPhotoText: { color: COLORS.textPrimary, fontWeight: '600' }
+    emptyCenterText: { color: 'white' },
+
+    row: { flexDirection: 'row', justifyContent: 'space-between' },
 });

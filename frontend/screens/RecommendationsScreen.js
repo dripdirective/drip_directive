@@ -492,7 +492,7 @@ const GeneratingView = ({ status, message, progress }) => {
   );
 };
 
-export default function RecommendationsScreen() {
+export default function RecommendationsScreen({ navigation }) {
   const { width: windowWidth } = useWindowDimensions();
   const [recommendations, setRecommendations] = useState([]);
   const [wardrobeItems, setWardrobeItems] = useState([]);
@@ -795,48 +795,48 @@ export default function RecommendationsScreen() {
 
           {/* Main Content */}
           <View style={styles.contentArea}>
-{
-    generating && generatingStatus && (
-        <GeneratingView {...generatingStatus} />
-    )
-}
+            {
+              generating && generatingStatus && (
+                <GeneratingView {...generatingStatus} />
+              )
+            }
 
-{/* New Form */ }
-{
-    !generating && showNewForm && (
-        <ScrollView
-            style={styles.newFormContainer}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            nestedScrollEnabled
-            contentContainerStyle={{ paddingBottom: 140 }}
-        >
-            <View style={styles.newFormContent}>
-                <Text style={styles.newFormTitle}>✨ Create New Outfit</Text>
-                <Text style={styles.newFormSubtitle}>Tell me what you're looking for</Text>
+            {/* New Form */}
+            {
+              !generating && showNewForm && (
+                <ScrollView
+                  style={styles.newFormContainer}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="on-drag"
+                  nestedScrollEnabled
+                  contentContainerStyle={{ paddingBottom: 140 }}
+                >
+                  <View style={styles.newFormContent}>
+                    <Text style={styles.newFormTitle}>✨ Create New Outfit</Text>
+                    <Text style={styles.newFormSubtitle}>Tell me what you're looking for</Text>
 
-                {/* Quick Prompts */}
-                <Text style={styles.quickPromptsLabel}>Quick suggestions:</Text>
-                <View style={styles.quickPromptsGrid}>
-                    {QUICK_PROMPTS.map((p, idx) => (
+                    {/* Quick Prompts */}
+                    <Text style={styles.quickPromptsLabel}>Quick suggestions:</Text>
+                    <View style={styles.quickPromptsGrid}>
+                      {QUICK_PROMPTS.map((p, idx) => (
                         <TouchableOpacity
-                            key={idx}
-                            style={[styles.quickPromptCard, query === p.text && styles.quickPromptCardActive]}
-                            onPress={() => setQuery(p.text)}
+                          key={idx}
+                          style={[styles.quickPromptCard, query === p.text && styles.quickPromptCardActive]}
+                          onPress={() => setQuery(p.text)}
                         >
-                            <Text style={styles.quickPromptIcon}>{p.icon}</Text>
-                            <Text style={[styles.quickPromptText, query === p.text && styles.quickPromptTextActive]}>
-                                {p.text}
-                            </Text>
+                          <Text style={styles.quickPromptIcon}>{p.icon}</Text>
+                          <Text style={[styles.quickPromptText, query === p.text && styles.quickPromptTextActive]}>
+                            {p.text}
+                          </Text>
                         </TouchableOpacity>
-                    ))}
-                </View>
+                      ))}
+                    </View>
 
-                {/* Custom Input */}
-                <Text style={styles.inputLabel}>Or describe your own:</Text>
-                <View style={styles.inputContainer}>
-                    <TextInput
+                    {/* Custom Input */}
+                    <Text style={styles.inputLabel}>Or describe your own:</Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
                         style={styles.input}
                         placeholder="e.g., Smart casual for a networking event..."
                         placeholderTextColor={COLORS.textMuted}
@@ -845,587 +845,615 @@ export default function RecommendationsScreen() {
                         multiline
                         maxLength={200}
                         returnKeyType="done"
-                    />
-                </View>
+                      />
+                    </View>
 
-                {/* Generate Button */}
-                <TouchableOpacity
-                    style={[styles.generateButton, (!query.trim() || processedCount < 2) && styles.buttonDisabled]}
-                    onPress={handleGenerate}
-                    disabled={!query.trim() || processedCount < 2}
-                    activeOpacity={0.8}
-                >
-                    <LinearGradient
+                    {/* Generate Button */}
+                    <TouchableOpacity
+                      style={[styles.generateButton, (!query.trim() || processedCount < 2) && styles.buttonDisabled]}
+                      onPress={handleGenerate}
+                      disabled={!query.trim() || processedCount < 2}
+                      activeOpacity={0.8}
+                    >
+                      <LinearGradient
                         colors={(!query.trim() || processedCount < 2)
-                            ? [COLORS.surface, COLORS.surfaceLight]
-                            : COLORS.gradients.accent}
+                          ? [COLORS.surface, COLORS.surfaceLight]
+                          : COLORS.gradients.accent}
                         style={styles.generateButtonGradient}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
-                    >
+                      >
                         <Text style={styles.generateButtonText}>🚀 Generate Outfits</Text>
-                    </LinearGradient>
-                </TouchableOpacity>
+                      </LinearGradient>
+                    </TouchableOpacity>
 
-                {processedCount < 2 && (
-                    <Text style={styles.warningText}>⚠️ Add at least 2 analyzed wardrobe items first</Text>
-                )}
-            </View>
-        </ScrollView>
-    )
-}
-
-{/* Selected Recommendation */ }
-{
-    !generating && !showNewForm && selectedRec && (
-        <ScrollView
-            style={styles.recommendationScroll}
-            contentContainerStyle={styles.recommendationScrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            nestedScrollEnabled
-        >
-            {/* Compact Header */}
-            <View style={styles.recHeaderCompact}>
-                <View style={styles.recHeaderLeft}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.recTitleSmall} numberOfLines={2}>
-                            {(selectedRec.query || '').trim()}
-                        </Text>
-                    </View>
-                </View>
-            </View>
-
-            {/* Outfit Tabs */}
-            {selectedRec.outfits && selectedRec.outfits.length > 0 && (
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.outfitTabsRow}
-                    nestedScrollEnabled
-                >
-                    {selectedRec.outfits.map((_, idx) => (
-                        <TouchableOpacity
-                            key={idx}
-                            style={[styles.outfitTab, selectedOutfitIndex === idx && styles.outfitTabActive]}
-                            onPress={() => setSelectedOutfitIndex(idx)}
-                            activeOpacity={0.85}
-                        >
-                            <Text style={[styles.outfitTabText, selectedOutfitIndex === idx && styles.outfitTabTextActive]}>
-                                #{idx + 1}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
+                    {processedCount < 2 && (
+                      <Text style={styles.warningText}>⚠️ Add at least 2 analyzed wardrobe items first</Text>
+                    )}
+                  </View>
                 </ScrollView>
-            )}
+              )
+            }
 
-            {/* Outfit Content (no nested ScrollView) */}
-            {selectedRec.outfits && selectedRec.outfits.length > 0 ? (
-                <OutfitDisplay
-                    outfit={selectedRec.outfits[selectedOutfitIndex]}
-                    index={selectedOutfitIndex}
-                    wardrobeItems={wardrobeItems}
-                    onTryOn={handleTryOn}
-                    loadingTryOn={loadingTryOn}
-                    recommendationId={selectedRec.id}
-                    onViewImage={handleViewImage}
-                    showTryOnSection={false}
-                />
-            ) : (
-                <View style={styles.noOutfits}>
-                    <Text style={styles.noOutfitsIcon}>
+            {/* Selected Recommendation */}
+            {
+              !generating && !showNewForm && selectedRec && (
+                <ScrollView
+                  style={styles.recommendationScroll}
+                  contentContainerStyle={styles.recommendationScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="on-drag"
+                  nestedScrollEnabled
+                >
+                  {/* Compact Header */}
+                  <View style={styles.recHeaderCompact}>
+                    <View style={styles.recHeaderLeft}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.recTitleSmall} numberOfLines={2}>
+                          {(selectedRec.query || '').trim()}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Outfit Tabs */}
+                  {selectedRec.outfits && selectedRec.outfits.length > 0 && (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.outfitTabsRow}
+                      nestedScrollEnabled
+                    >
+                      {selectedRec.outfits.map((_, idx) => (
+                        <TouchableOpacity
+                          key={idx}
+                          style={[styles.outfitTab, selectedOutfitIndex === idx && styles.outfitTabActive]}
+                          onPress={() => setSelectedOutfitIndex(idx)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={[styles.outfitTabText, selectedOutfitIndex === idx && styles.outfitTabTextActive]}>
+                            #{idx + 1}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  )}
+
+                  {/* Outfit Content (no nested ScrollView) */}
+                  {selectedRec.outfits && selectedRec.outfits.length > 0 ? (
+                    <OutfitDisplay
+                      outfit={selectedRec.outfits[selectedOutfitIndex]}
+                      index={selectedOutfitIndex}
+                      wardrobeItems={wardrobeItems}
+                      onTryOn={handleTryOn}
+                      loadingTryOn={loadingTryOn}
+                      recommendationId={selectedRec.id}
+                      onViewImage={handleViewImage}
+                      showTryOnSection={false}
+                    />
+                  ) : (
+                    <View style={styles.noOutfits}>
+                      <Text style={styles.noOutfitsIcon}>
                         {selectedRec.status === 'processing' ? '⏳' : '❌'}
-                    </Text>
-                    <Text style={styles.noOutfitsText}>
+                      </Text>
+                      <Text style={styles.noOutfitsText}>
                         {selectedRec.status === 'processing'
-                            ? 'Creating your outfits...'
-                            : 'No outfits generated'}
-                    </Text>
+                          ? 'Creating your outfits...'
+                          : 'No outfits generated'}
+                      </Text>
+                    </View>
+                  )}
+                </ScrollView>
+              )
+            }
+
+            {/* Empty State - No Selection */}
+            {
+              !generating && !showNewForm && !selectedRec && (
+                <View style={styles.emptyContent}>
+                  <Text style={styles.emptyContentIcon}>👗</Text>
+                  <Text style={styles.emptyContentTitle}>Welcome to Style Studio</Text>
+                  <Text style={styles.emptyContentText}>
+                    Click "New Request" to get smart outfit recommendations from your wardrobe
+                  </Text>
                 </View>
-            )}
-        </ScrollView>
-    )
-}
-
-{/* Empty State - No Selection */ }
-{
-    !generating && !showNewForm && !selectedRec && (
-        <View style={styles.emptyContent}>
-            <Text style={styles.emptyContentIcon}>👗</Text>
-            <Text style={styles.emptyContentTitle}>Welcome to Style Studio</Text>
-            <Text style={styles.emptyContentText}>
-                Click "New Request" to get smart outfit recommendations from your wardrobe
-            </Text>
-        </View>
-    )
-}
+              )
+            }
+          </View >
         </View >
+
+        <ImagePreviewModal
+          visible={showImageModal}
+          imageUrl={selectedImageUrl}
+          onClose={() => setShowImageModal(false)}
+        />
+
+        <FlowNavBar
+          prev={{ route: 'Wardrobe', label: 'Back: Wardrobe', icon: '👗', enabled: true }}
+          next={null}
+        />
       </View >
-
-          <ImagePreviewModal
-            visible={showImageModal}
-            imageUrl={selectedImageUrl}
-            onClose={() => setShowImageModal(false)}
-          />
-
-          <FlowNavBar
-            prev={{ route: 'Wardrobe', label: 'Back: Wardrobe', icon: '👗', enabled: true }}
-            next={null}
-          />
-        </View >
     </KeyboardAvoidingView >
   );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    loadingText: { marginTop: SPACING.lg, color: COLORS.textSecondary, fontSize: 16 },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { marginTop: SPACING.lg, color: COLORS.textSecondary, fontSize: 16 },
 
-    // Main Layout
-    mainLayout: {
-        flex: 1,
-    },
-    mainLayoutMobile: {
-        flexDirection: 'column',
-    },
-    mainLayoutDesktop: {
-        flexDirection: 'row',
-    },
+  // Main Layout
+  mainLayout: {
+    flex: 1,
+  },
+  mainLayoutMobile: {
+    flexDirection: 'column',
+  },
+  mainLayoutDesktop: {
+    flexDirection: 'row',
+  },
 
-    // Mobile header / history
-    mobileHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: SPACING.lg,
-        paddingTop: SPACING.lg,
-        paddingBottom: SPACING.md,
-        gap: SPACING.md,
-    },
-    mobileTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
-    mobileSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  // Mobile header / history
+  mobileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+    gap: SPACING.md,
+  },
+  mobileTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
+  mobileSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
 
-    menuButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: COLORS.surface,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    menuButtonText: { fontSize: 18, color: COLORS.textPrimary, fontWeight: '900' },
+  menuButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuButtonText: { fontSize: 18, color: COLORS.textPrimary, fontWeight: '900' },
 
-    newRequestPill: { borderRadius: BORDER_RADIUS.full, overflow: 'hidden', ...SHADOWS.md },
-    newRequestPillGrad: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: BORDER_RADIUS.full },
-    newRequestPillText: { color: COLORS.textPrimary, fontWeight: '900', fontSize: 13 },
+  newRequestPill: { borderRadius: BORDER_RADIUS.full, overflow: 'hidden', ...SHADOWS.md },
+  newRequestPillGrad: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: BORDER_RADIUS.full },
+  newRequestPillText: { color: COLORS.textPrimary, fontWeight: '900', fontSize: 13 },
 
-    // Drawer
-    drawerOverlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'row' },
-    drawerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
-    drawerPanel: {
-        width: 320,
-        height: '100%',
-        backgroundColor: COLORS.background,
-        borderRightWidth: 1,
-        borderRightColor: COLORS.border,
-        paddingTop: SPACING.xl,
-    },
-    drawerHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: SPACING.lg,
-        paddingBottom: SPACING.md,
-    },
-    drawerTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
-    drawerSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
-    drawerClose: {
-        width: 34,
-        height: 34,
-        borderRadius: 17,
-        backgroundColor: COLORS.surface,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    drawerCloseText: { color: COLORS.textPrimary, fontWeight: '900', fontSize: 16 },
-    drawerNewButton: { marginHorizontal: SPACING.lg, marginBottom: SPACING.md, borderRadius: BORDER_RADIUS.lg, overflow: 'hidden' },
-    drawerNewButtonGrad: { paddingVertical: SPACING.md, alignItems: 'center' },
-    drawerNewButtonText: { color: COLORS.textPrimary, fontWeight: '900', fontSize: 14 },
-    drawerList: { flex: 1 },
+  // Drawer
+  drawerOverlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'row' },
+  drawerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  drawerPanel: {
+    width: 320,
+    height: '100%',
+    backgroundColor: COLORS.background,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+    paddingTop: SPACING.xl,
+  },
+  drawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  drawerTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary },
+  drawerSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  drawerClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerCloseText: { color: COLORS.textPrimary, fontWeight: '900', fontSize: 16 },
+  drawerNewButton: { marginHorizontal: SPACING.lg, marginBottom: SPACING.md, borderRadius: BORDER_RADIUS.lg, overflow: 'hidden' },
+  drawerNewButtonGrad: { paddingVertical: SPACING.md, alignItems: 'center' },
+  drawerNewButtonText: { color: COLORS.textPrimary, fontWeight: '900', fontSize: 14 },
+  drawerList: { flex: 1 },
 
-    // Sidebar
-    sidebar: {
-        width: 280,
-        backgroundColor: COLORS.surface,
-        borderRightWidth: 1,
-        borderRightColor: COLORS.border,
-    },
-    sidebarHeader: {
-        padding: SPACING.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: COLORS.border,
-    },
-    sidebarTitle: { fontSize: 22, fontWeight: '800', color: COLORS.textPrimary },
-    sidebarSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  // Sidebar
+  sidebar: {
+    width: 280,
+    backgroundColor: COLORS.surface,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+  },
+  sidebarHeader: {
+    padding: SPACING.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  sidebarTitle: { fontSize: 22, fontWeight: '800', color: COLORS.textPrimary },
+  sidebarSubtitle: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
 
-    // New Button
-    newButton: {
-        margin: SPACING.md,
-        borderRadius: BORDER_RADIUS.md,
-        overflow: 'hidden',
-    },
-    newButtonGradient: {
-        paddingVertical: SPACING.md,
-        alignItems: 'center',
-    },
-    newButtonText: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  // New Button
+  newButton: {
+    margin: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+  },
+  newButtonGradient: {
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  newButtonText: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
 
-    // History List
-    historyList: { flex: 1 },
-    emptyHistory: {
-        padding: SPACING.xl,
-        alignItems: 'center',
-    },
-    emptyHistoryIcon: { fontSize: 32, marginBottom: SPACING.sm },
-    emptyHistoryText: { fontSize: 13, color: COLORS.textMuted },
+  // History List
+  historyList: { flex: 1 },
+  emptyHistory: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+  },
+  emptyHistoryIcon: { fontSize: 32, marginBottom: SPACING.sm },
+  emptyHistoryText: { fontSize: 13, color: COLORS.textMuted },
 
-    // Sidebar Item
-    sidebarItem: {
-        flexDirection: 'row',
-        paddingVertical: SPACING.md,
-        paddingHorizontal: SPACING.md,
-        borderBottomWidth: 1,
-        borderBottomColor: COLORS.border,
-    },
-    sidebarIndexBadge: {
-        width: 26,
-        height: 26,
-        borderRadius: 13,
-        backgroundColor: COLORS.surfaceLight,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: SPACING.sm,
-        marginTop: 2,
-    },
-    sidebarIndexText: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary },
-    sidebarItemSelected: {
-        backgroundColor: COLORS.primary + '15',
-    },
-    selectedIndicator: {
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        bottom: 0,
-        width: 3,
-        backgroundColor: COLORS.primary,
-    },
-    sidebarItemContent: { flex: 1, paddingLeft: SPACING.xs },
-    sidebarItemHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-    sidebarIcon: { fontSize: 16, marginRight: SPACING.xs },
-    sidebarLabel: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
-    sidebarLabelSelected: { color: COLORS.primary },
-    sidebarDate: { fontSize: 11, color: COLORS.textMuted, marginBottom: 4 },
-    sidebarQuery: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 16 },
-    sidebarMeta: { flexDirection: 'row', alignItems: 'center', marginTop: SPACING.xs },
-    statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: SPACING.xs },
-    sidebarOutfits: { fontSize: 10, color: COLORS.textMuted },
+  // Sidebar Item
+  sidebarItem: {
+    flexDirection: 'row',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  sidebarIndexBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.surfaceLight,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.sm,
+    marginTop: 2,
+  },
+  sidebarIndexText: { fontSize: 12, fontWeight: '800', color: COLORS.textPrimary },
+  sidebarItemSelected: {
+    backgroundColor: COLORS.primary + '15',
+  },
+  selectedIndicator: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: COLORS.primary,
+  },
+  sidebarItemContent: { flex: 1, paddingLeft: SPACING.xs },
+  sidebarItemHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  sidebarIcon: { fontSize: 16, marginRight: SPACING.xs },
+  sidebarLabel: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
+  sidebarLabelSelected: { color: COLORS.primary },
+  sidebarDate: { fontSize: 11, color: COLORS.textMuted, marginBottom: 4 },
+  sidebarQuery: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 16 },
+  sidebarMeta: { flexDirection: 'row', alignItems: 'center', marginTop: SPACING.xs },
+  statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: SPACING.xs },
+  sidebarOutfits: { fontSize: 10, color: COLORS.textMuted },
 
-    // Content Area
-    contentArea: {
-        flex: 1,
-        backgroundColor: COLORS.background,
-    },
+  // Content Area
+  contentArea: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
 
-    // Generating
-    generatingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: SPACING.xl,
-    },
-    generatingIcon: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: SPACING.lg,
-    },
-    generatingEmoji: { fontSize: 36 },
-    generatingTitle: { fontSize: 22, fontWeight: '700', color: COLORS.textPrimary, marginBottom: SPACING.xs },
-    generatingMessage: { fontSize: 14, color: COLORS.textSecondary, marginBottom: SPACING.xl },
-    progressBar: {
-        width: 250,
-        height: 8,
-        backgroundColor: COLORS.surface,
-        borderRadius: 4,
-        overflow: 'hidden',
-        marginBottom: SPACING.sm,
-    },
-    progressFill: { height: '100%', borderRadius: 4 },
-    progressText: { fontSize: 13, color: COLORS.textMuted },
+  // Generating
+  generatingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  generatingIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  generatingEmoji: { fontSize: 36 },
+  generatingTitle: { fontSize: 22, fontWeight: '700', color: COLORS.textPrimary, marginBottom: SPACING.xs },
+  generatingMessage: { fontSize: 14, color: COLORS.textSecondary, marginBottom: SPACING.xl },
+  progressBar: {
+    width: 250,
+    height: 8,
+    backgroundColor: COLORS.surface,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: SPACING.sm,
+  },
+  progressFill: { height: '100%', borderRadius: 4 },
+  progressText: { fontSize: 13, color: COLORS.textMuted },
 
-    // New Form
-    newFormContainer: { flex: 1 },
-    newFormContent: { padding: SPACING.xl },
-    newFormTitle: { fontSize: 26, fontWeight: '800', color: COLORS.textPrimary, marginBottom: SPACING.xs },
-    newFormSubtitle: { fontSize: 14, color: COLORS.textSecondary, marginBottom: SPACING.xl },
-    quickPromptsLabel: { fontSize: 13, color: COLORS.textMuted, marginBottom: SPACING.md },
-    quickPromptsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.xl },
-    quickPromptCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: COLORS.surface,
-        paddingHorizontal: SPACING.md,
-        paddingVertical: SPACING.sm,
-        borderRadius: BORDER_RADIUS.md,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    quickPromptCardActive: {
-        backgroundColor: COLORS.primary + '20',
-        borderColor: COLORS.primary,
-    },
-    quickPromptIcon: { fontSize: 18, marginRight: SPACING.sm },
-    quickPromptText: { fontSize: 13, color: COLORS.textSecondary },
-    quickPromptTextActive: { color: COLORS.primaryLight, fontWeight: '600' },
-    inputLabel: { fontSize: 13, color: COLORS.textMuted, marginBottom: SPACING.sm },
-    inputContainer: {
-        backgroundColor: COLORS.surface,
-        borderRadius: BORDER_RADIUS.md,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        marginBottom: SPACING.xl,
-    },
-    input: {
-        padding: SPACING.md,
-        fontSize: 15,
-        color: COLORS.textPrimary,
-        minHeight: 100,
-        textAlignVertical: 'top',
-    },
-    generateButton: { borderRadius: BORDER_RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },
-    buttonDisabled: { opacity: 0.5 },
-    generateButtonGradient: { paddingVertical: SPACING.lg, alignItems: 'center' },
-    generateButtonText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
-    warningText: { fontSize: 12, color: COLORS.warning, marginTop: SPACING.md, textAlign: 'center' },
+  // New Form
+  newFormContainer: { flex: 1 },
+  newFormContent: { padding: SPACING.xl },
+  newFormTitle: { fontSize: 26, fontWeight: '800', color: COLORS.textPrimary, marginBottom: SPACING.xs },
+  newFormSubtitle: { fontSize: 14, color: COLORS.textSecondary, marginBottom: SPACING.xl },
+  quickPromptsLabel: { fontSize: 13, color: COLORS.textMuted, marginBottom: SPACING.md },
+  quickPromptsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.xl },
+  quickPromptCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  quickPromptCardActive: {
+    backgroundColor: COLORS.primary + '20',
+    borderColor: COLORS.primary,
+  },
+  quickPromptIcon: { fontSize: 18, marginRight: SPACING.sm },
+  quickPromptText: { fontSize: 13, color: COLORS.textSecondary },
+  quickPromptTextActive: { color: COLORS.primaryLight, fontWeight: '600' },
+  inputLabel: { fontSize: 13, color: COLORS.textMuted, marginBottom: SPACING.sm },
+  inputContainer: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: SPACING.xl,
+  },
+  input: {
+    padding: SPACING.md,
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  generateButton: { borderRadius: BORDER_RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },
+  buttonDisabled: { opacity: 0.5 },
+  generateButtonGradient: { paddingVertical: SPACING.lg, alignItems: 'center' },
+  generateButtonText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  warningText: { fontSize: 12, color: COLORS.warning, marginTop: SPACING.md, textAlign: 'center' },
 
-    // Recommendation View
-    recommendationView: { flex: 1 },
-    recommendationScroll: { flex: 1 },
-    recommendationScrollContent: { paddingBottom: 160 },
-    // Compact header to save space (mobile-first)
-    recHeaderCompact: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: SPACING.lg,
-        paddingTop: SPACING.md,
-        paddingBottom: SPACING.sm,
-    },
-    recHeaderLeft: { flexDirection: 'row', alignItems: 'center' },
-    recIconSmall: { fontSize: 22, marginRight: SPACING.sm },
-    recTitleSmall: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
-    recMetaSmall: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  // Recommendation View
+  recommendationView: { flex: 1 },
+  recommendationScroll: { flex: 1 },
+  recommendationScrollContent: { paddingBottom: 160 },
+  // Compact header to save space (mobile-first)
+  recHeaderCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+  },
+  recHeaderLeft: { flexDirection: 'row', alignItems: 'center' },
+  recIconSmall: { fontSize: 22, marginRight: SPACING.sm },
+  recTitleSmall: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
+  recMetaSmall: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
 
-    // Query Box
-    queryBoxCompact: {
-        marginHorizontal: SPACING.lg,
-        marginBottom: SPACING.sm,
-        padding: SPACING.md,
-        backgroundColor: COLORS.surface,
-        borderRadius: BORDER_RADIUS.md,
-        borderLeftWidth: 3,
-        borderLeftColor: COLORS.primary,
-    },
-    queryLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 4 },
-    queryTextCompact: { fontSize: 13, color: COLORS.textPrimary },
+  // Query Box
+  queryBoxCompact: {
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    padding: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.primary,
+  },
+  queryLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 4 },
+  queryTextCompact: { fontSize: 13, color: COLORS.textPrimary },
 
-    // Outfit Tabs
-    outfitTabs: {
-        flexDirection: 'row',
-        paddingHorizontal: SPACING.md,
-        gap: SPACING.sm,
-        marginBottom: SPACING.md,
-    },
-    outfitTabsRow: {
-        paddingHorizontal: SPACING.lg,
-        gap: SPACING.sm,
-        paddingBottom: SPACING.sm,
-    },
-    outfitTab: {
-        paddingHorizontal: SPACING.lg,
-        paddingVertical: SPACING.sm,
-        backgroundColor: COLORS.surface,
-        borderRadius: BORDER_RADIUS.md,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    outfitTabActive: {
-        backgroundColor: COLORS.primary,
-        borderColor: COLORS.primary,
-    },
-    outfitTabText: { fontSize: 13, color: COLORS.textMuted, fontWeight: '600' },
-    outfitTabTextActive: { color: COLORS.textPrimary },
+  // Outfit Tabs
+  outfitTabs: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  outfitTabsRow: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+    paddingBottom: SPACING.sm,
+  },
+  outfitTab: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  outfitTabActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  outfitTabText: { fontSize: 13, color: COLORS.textMuted, fontWeight: '600' },
+  outfitTabTextActive: { color: COLORS.textPrimary },
 
-    // Outfit Scroll (legacy, no longer used for selected recommendation)
-    outfitScroll: { flex: 1 },
+  // Outfit Scroll (legacy, no longer used for selected recommendation)
+  outfitScroll: { flex: 1 },
 
-    // Outfit Container
-    outfitContainer: { padding: SPACING.lg, paddingBottom: SPACING.xxxl },
-    outfitHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.xl },
-    outfitNumberBadge: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: COLORS.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: SPACING.md,
-    },
-    outfitNumber: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary },
-    outfitTitleContainer: { flex: 1 },
-    outfitName: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary },
-    outfitOccasion: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
+  // Outfit Container
+  outfitContainer: { padding: SPACING.lg, paddingBottom: SPACING.xxxl },
+  outfitHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.xl },
+  outfitNumberBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
+  },
+  outfitNumber: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary },
+  outfitTitleContainer: { flex: 1 },
+  outfitName: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary },
+  outfitOccasion: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
 
-    // Section Label
-    sectionLabel: { fontSize: 15, fontWeight: '700', color: COLORS.textMuted, marginBottom: SPACING.md, marginTop: SPACING.sm },
+  // Section Label
+  sectionLabel: { fontSize: 15, fontWeight: '700', color: COLORS.textMuted, marginBottom: SPACING.md, marginTop: SPACING.sm },
 
-    // Items Grid
-    itemsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, marginBottom: SPACING.lg },
-    outfitItemCard: {
-        width: '47%',
-        backgroundColor: COLORS.surface,
-        borderRadius: BORDER_RADIUS.lg,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    outfitItemImage: {
-        width: '100%',
-        height: 220,
-        backgroundColor: COLORS.backgroundLight,
-    },
-    outfitItemPlaceholder: {
-        width: '100%',
-        height: 220,
-        backgroundColor: COLORS.surfaceLight,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    placeholderIcon: { fontSize: 40, opacity: 0.5 },
-    outfitItemInfo: { padding: SPACING.md, backgroundColor: COLORS.surface },
-    outfitItemName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4 },
-    outfitItemTip: { fontSize: 12, color: COLORS.textMuted },
-    outfitItemTapHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 4 },
+  // Items Grid
+  itemsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, marginBottom: SPACING.lg },
+  outfitItemCard: {
+    width: '47%',
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  outfitItemImage: {
+    width: '100%',
+    height: 220,
+    backgroundColor: COLORS.backgroundLight,
+  },
+  outfitItemPlaceholder: {
+    width: '100%',
+    height: 220,
+    backgroundColor: COLORS.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderIcon: { fontSize: 40, opacity: 0.5 },
+  outfitItemInfo: { padding: SPACING.md, backgroundColor: COLORS.surface },
+  outfitItemName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4 },
+  outfitItemTip: { fontSize: 12, color: COLORS.textMuted },
+  outfitItemTapHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 4 },
 
-    // Image preview modal
-    imagePreviewContainer: {
-        flex: 1,
-        backgroundColor: COLORS.background,
-        padding: SPACING.lg,
-        paddingTop: SPACING.xl,
-    },
-    imagePreviewHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: SPACING.md,
-    },
-    imagePreviewTitle: {
-        fontSize: 18,
-        fontWeight: '900',
-        color: COLORS.textPrimary,
-    },
-    imagePreviewBody: {
-        flex: 1,
-        backgroundColor: COLORS.surface,
-        borderRadius: BORDER_RADIUS.xl,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    imagePreviewImage: {
-        width: '100%',
-        height: '100%',
-    },
+  // Image preview modal
+  imagePreviewContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    padding: SPACING.lg,
+    paddingTop: SPACING.xl,
+  },
+  header: {
+    padding: SPACING.lg,
+    paddingTop: 60,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: 'white',
+  },
+  vibeSyncBtn: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  vibeSyncBtnText: {
+    color: COLORS.accent,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  imagePreviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  imagePreviewTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+  imagePreviewBody: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.xl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  imagePreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
 
-    // Description Box
-    descriptionBox: {
-        backgroundColor: COLORS.surface,
-        padding: SPACING.lg,
-        borderRadius: BORDER_RADIUS.lg,
-        marginBottom: SPACING.md,
-        borderLeftWidth: 4,
-        borderLeftColor: COLORS.secondary,
-    },
-    descriptionLabel: { fontSize: 14, fontWeight: '700', color: COLORS.secondary, marginBottom: SPACING.sm },
-    descriptionText: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 22 },
+  // Description Box
+  descriptionBox: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.md,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.secondary,
+  },
+  descriptionLabel: { fontSize: 14, fontWeight: '700', color: COLORS.secondary, marginBottom: SPACING.sm },
+  descriptionText: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 22 },
 
-    // Empty outfit
-    emptyOutfitBox: {
-        backgroundColor: COLORS.surface,
-        padding: SPACING.lg,
-        borderRadius: BORDER_RADIUS.lg,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        alignItems: 'center',
-        marginBottom: SPACING.md,
-    },
-    emptyOutfitIcon: { fontSize: 28, marginBottom: 6 },
-    emptyOutfitText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center' },
+  // Empty outfit
+  emptyOutfitBox: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  emptyOutfitIcon: { fontSize: 28, marginBottom: 6 },
+  emptyOutfitText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center' },
 
-    // Try-On Section
-    tryonSection: {
-        backgroundColor: COLORS.surface,
-        padding: SPACING.lg,
-        borderRadius: BORDER_RADIUS.lg,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        marginTop: SPACING.md,
-    },
-    tryonImageContainer: { marginBottom: SPACING.md },
-    tryonImage: { width: '100%', height: 400, borderRadius: BORDER_RADIUS.lg, backgroundColor: COLORS.surfaceLight },
-    tryonPreview: {
-        height: 120,
-        backgroundColor: COLORS.backgroundGlass,
-        borderRadius: BORDER_RADIUS.md,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: COLORS.border,
-        borderStyle: 'dashed',
-    },
-    tryonPreviewIcon: { fontSize: 36, marginBottom: SPACING.sm },
-    tryonPreviewText: { fontSize: 14, color: COLORS.textMuted },
-    tryonButton: { borderRadius: BORDER_RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },
-    tryonButtonGradient: { paddingVertical: SPACING.lg, alignItems: 'center' },
-    tryonButtonText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
-    loadingRow: { flexDirection: 'row', alignItems: 'center' },
+  // Try-On Section
+  tryonSection: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginTop: SPACING.md,
+  },
+  tryonImageContainer: { marginBottom: SPACING.md },
+  tryonImage: { width: '100%', height: 400, borderRadius: BORDER_RADIUS.lg, backgroundColor: COLORS.surfaceLight },
+  tryonPreview: {
+    height: 120,
+    backgroundColor: COLORS.backgroundGlass,
+    borderRadius: BORDER_RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+  },
+  tryonPreviewIcon: { fontSize: 36, marginBottom: SPACING.sm },
+  tryonPreviewText: { fontSize: 14, color: COLORS.textMuted },
+  tryonButton: { borderRadius: BORDER_RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },
+  tryonButtonGradient: { paddingVertical: SPACING.lg, alignItems: 'center' },
+  tryonButtonText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  loadingRow: { flexDirection: 'row', alignItems: 'center' },
 
-    // No Outfits
-    noOutfits: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: SPACING.xxxl,
-    },
-    noOutfitsIcon: { fontSize: 48, marginBottom: SPACING.md },
-    noOutfitsText: { fontSize: 16, color: COLORS.textMuted },
+  // No Outfits
+  noOutfits: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xxxl,
+  },
+  noOutfitsIcon: { fontSize: 48, marginBottom: SPACING.md },
+  noOutfitsText: { fontSize: 16, color: COLORS.textMuted },
 
-    // Empty Content
-    emptyContent: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: SPACING.xxxl,
-    },
-    emptyContentIcon: { fontSize: 64, marginBottom: SPACING.lg },
-    emptyContentTitle: { fontSize: 24, fontWeight: '700', color: COLORS.textPrimary, marginBottom: SPACING.sm },
-    emptyContentText: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', maxWidth: 300 },
+  // Empty Content
+  emptyContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xxxl,
+  },
+  emptyContentIcon: { fontSize: 64, marginBottom: SPACING.lg },
+  emptyContentTitle: { fontSize: 24, fontWeight: '700', color: COLORS.textPrimary, marginBottom: SPACING.sm },
+  emptyContentText: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', maxWidth: 300 },
 });

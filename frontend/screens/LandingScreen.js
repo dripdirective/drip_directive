@@ -608,7 +608,44 @@ const styles = StyleSheet.create({
   ctaGrad: { paddingVertical: SPACING.lg, alignItems: 'center' },
   ctaText: { color: COLORS.textPrimary, fontSize: 17, fontWeight: '900', letterSpacing: 0.4 },
 
-  appStoreRow: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
+  ctaText: { color: COLORS.textPrimary, fontSize: 17, fontWeight: '900', letterSpacing: 0.4 },
+
+  dnaCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: BORDER_RADIUS.xl,
+    overflow: 'hidden',
+    ...SHADOWS.md,
+    marginTop: SPACING.md,
+  },
+  dnaCardGrad: {
+    padding: SPACING.lg,
+  },
+  dnaContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  dnaIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dnaTitle: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  dnaSubtitle: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  appStoreRow: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.lg },
   appStoreBadge: {
     flexDirection: 'row',
     alignItems: 'center',

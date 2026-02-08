@@ -16,8 +16,28 @@ import RecommendationsScreen from './screens/RecommendationsScreen';
 import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { COLORS } from './theme/colors';
 
+// VibeSync Imports
+import VibeSyncWelcomeScreen from './screens/vibesync/VibeSyncWelcomeScreen';
+import VibeSyncQuizScreen from './screens/vibesync/VibeSyncQuizScreen';
+import VibeSyncResultsScreen from './screens/vibesync/VibeSyncResultsScreen';
+import VibeSyncWardrobeScreen from './screens/vibesync/VibeSyncWardrobeScreen';
+import VibeSyncOutfitsScreen from './screens/vibesync/VibeSyncOutfitsScreen';
+
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const VibeSyncStack = createNativeStackNavigator();
+
+function VibeSyncNavigator() {
+  return (
+    <VibeSyncStack.Navigator screenOptions={{ headerShown: false }}>
+      <VibeSyncStack.Screen name="VibeSyncWelcome" component={VibeSyncWelcomeScreen} />
+      <VibeSyncStack.Screen name="VibeSyncQuiz" component={VibeSyncQuizScreen} />
+      <VibeSyncStack.Screen name="VibeSyncResults" component={VibeSyncResultsScreen} />
+      <VibeSyncStack.Screen name="VibeSyncWardrobe" component={VibeSyncWardrobeScreen} />
+      <VibeSyncStack.Screen name="VibeSyncOutfits" component={VibeSyncOutfitsScreen} />
+    </VibeSyncStack.Navigator>
+  );
+}
 
 // Enable proper browser back/forward on web by using URL-based linking.
 const linking = {
@@ -34,6 +54,15 @@ const linking = {
           Me: 'me',
           Wardrobe: 'wardrobe',
           Recommendations: 'style-ai',
+          VibeSync: {
+            screens: {
+              VibeSyncWelcome: 'vibesync',
+              VibeSyncQuiz: 'vibesync/quiz',
+              VibeSyncResults: 'vibesync/results',
+              VibeSyncWardrobe: 'vibesync/wardrobe',
+              VibeSyncOutfits: 'vibesync/outfits',
+            }
+          },
         },
       },
     },
@@ -157,6 +186,11 @@ function AppNavigator() {
                 </TouchableOpacity>
               ),
             })}
+          />
+          <Stack.Screen
+            name="VibeSync"
+            component={VibeSyncNavigator}
+            options={{ headerShown: false }}
           />
         </Stack.Navigator>
       ) : (
