@@ -527,7 +527,13 @@ export default function RecommendationsScreen({ navigation }) {
         recommendationsAPI.getAll(),
         wardrobeAPI.getItems(),
       ]);
-      const sortedRecs = (recsData || []).sort((a, b) => b.id - a.id);
+      // Sort newest-first (ChatGPT-style). Prefer created_at, fall back to id.
+      const sortedRecs = (recsData || []).slice().sort((a, b) => {
+        const aT = a?.created_at ? new Date(a.created_at).getTime() : 0;
+        const bT = b?.created_at ? new Date(b.created_at).getTime() : 0;
+        if (bT !== aT) return bT - aT;
+        return (b?.id || 0) - (a?.id || 0);
+      });
       setRecommendations(sortedRecs);
       setWardrobeItems(wardrobeData || []);
 
@@ -587,12 +593,17 @@ export default function RecommendationsScreen({ navigation }) {
 
         try {
           const data = await recommendationsAPI.getAll();
-          const sorted = (data || []).slice().sort((a, b) => b.id - a.id);
+          const sorted = (data || []).slice().sort((a, b) => {
+            const aT = a?.created_at ? new Date(a.created_at).getTime() : 0;
+            const bT = b?.created_at ? new Date(b.created_at).getTime() : 0;
+            if (bT !== aT) return bT - aT;
+            return (b?.id || 0) - (a?.id || 0);
+          });
           // The /generate endpoint does NOT return an id. Find the newest rec that matches this query after we started.
           const rec = sorted.find(r => {
             const sameQuery = String(r?.query || '').trim().toLowerCase() === targetQuery.toLowerCase();
             const createdAt = r?.created_at ? new Date(r.created_at).getTime() : 0;
-            return sameQuery >= (startedAt - 10_000);
+            return sameQuery && createdAt >= (startedAt - 10_000);
           }) || sorted[0];
 
           if (rec && rec.status === 'completed') {
@@ -601,6 +612,13 @@ export default function RecommendationsScreen({ navigation }) {
 
             setTimeout(() => {
               const sortedRecs = (data || []).slice().sort((a, b) => b.id - a.id);
+              // Ensure newest-first after refresh
+              sortedRecs.sort((a, b) => {
+                const aT = a?.created_at ? new Date(a.created_at).getTime() : 0;
+                const bT = b?.created_at ? new Date(b.created_at).getTime() : 0;
+                if (bT !== aT) return bT - aT;
+                return (b?.id || 0) - (a?.id || 0);
+              });
               setRecommendations(sortedRecs);
               // Always open the request we just triggered (or the newest if not found)
               setSelectedRec(rec || sortedRecs[0] || null);

@@ -527,7 +527,13 @@ export default function RecommendationsScreen() {
         recommendationsAPI.getAll(),
         wardrobeAPI.getItems(),
       ]);
-      const sortedRecs = (recsData || []).sort((a, b) => b.id - a.id);
+      // Sort newest-first (ChatGPT-style). Prefer created_at, fall back to id.
+      const sortedRecs = (recsData || []).slice().sort((a, b) => {
+        const aT = a?.created_at ? new Date(a.created_at).getTime() : 0;
+        const bT = b?.created_at ? new Date(b.created_at).getTime() : 0;
+        if (bT !== aT) return bT - aT;
+        return (b?.id || 0) - (a?.id || 0);
+      });
       setRecommendations(sortedRecs);
       setWardrobeItems(wardrobeData || []);
 
@@ -587,7 +593,12 @@ export default function RecommendationsScreen() {
 
         try {
           const data = await recommendationsAPI.getAll();
-          const sorted = (data || []).slice().sort((a, b) => b.id - a.id);
+          const sorted = (data || []).slice().sort((a, b) => {
+            const aT = a?.created_at ? new Date(a.created_at).getTime() : 0;
+            const bT = b?.created_at ? new Date(b.created_at).getTime() : 0;
+            if (bT !== aT) return bT - aT;
+            return (b?.id || 0) - (a?.id || 0);
+          });
           // The /generate endpoint does NOT return an id. Find the newest rec that matches this query after we started.
           const rec = sorted.find(r => {
             const sameQuery = String(r?.query || '').trim().toLowerCase() === targetQuery.toLowerCase();
@@ -601,6 +612,13 @@ export default function RecommendationsScreen() {
 
             setTimeout(() => {
               const sortedRecs = (data || []).slice().sort((a, b) => b.id - a.id);
+              // Ensure newest-first after refresh
+              sortedRecs.sort((a, b) => {
+                const aT = a?.created_at ? new Date(a.created_at).getTime() : 0;
+                const bT = b?.created_at ? new Date(b.created_at).getTime() : 0;
+                if (bT !== aT) return bT - aT;
+                return (b?.id || 0) - (a?.id || 0);
+              });
               setRecommendations(sortedRecs);
               // Always open the request we just triggered (or the newest if not found)
               setSelectedRec(rec || sortedRecs[0] || null);
@@ -709,266 +727,266 @@ export default function RecommendationsScreen() {
         <LinearGradient colors={[COLORS.background, COLORS.backgroundLight]} style={StyleSheet.absoluteFill} />
 
         <View style={[styles.mainLayout, isMobileLayout ? styles.mainLayoutMobile : styles.mainLayoutDesktop]}>
-        {isMobileLayout ? (
-          <>
-            {/* Mobile Header */}
-            <View style={styles.mobileHeader}>
-              <TouchableOpacity
-                style={styles.menuButton}
-                onPress={() => setShowDrawer(true)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.menuButtonText}>☰</Text>
-              </TouchableOpacity>
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.mobileTitle}>Style Studio</Text>
-                <Text style={styles.mobileSubtitle}>Ask for outfits from your wardrobe</Text>
-              </View>
-
-              <TouchableOpacity style={styles.newRequestPill} onPress={() => setShowNewForm(true)} activeOpacity={0.9}>
-                <LinearGradient
-                  colors={COLORS.gradients.primary}
-                  style={styles.newRequestPillGrad}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
-                  <Text style={styles.newRequestPillText}>＋ New</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-
-            <MobileDrawer
-              visible={showDrawer}
-              onClose={() => setShowDrawer(false)}
-              recommendations={recommendations}
-              selectedId={selectedRec?.id}
-              onSelect={handleSelectRec}
-              onNewRequest={() => {
-                setShowNewForm(true);
-                setShowDrawer(false);
-              }}
-            />
-          </>
-        ) : (
-          /* Desktop Sidebar */
-          <View style={styles.sidebar}>
-            <View style={styles.sidebarHeader}>
-              <Text style={styles.sidebarTitle}>✨ Style Studio</Text>
-              <Text style={styles.sidebarSubtitle}>{recommendations.length} sessions</Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.newButton}
-              onPress={() => setShowNewForm(true)}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={COLORS.gradients.primary}
-                style={styles.newButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Text style={styles.newButtonText}>+ New Request</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
-              {recommendations.length === 0 ? (
-                <View style={styles.emptyHistory}>
-                  <Text style={styles.emptyHistoryIcon}>📭</Text>
-                  <Text style={styles.emptyHistoryText}>No history yet</Text>
-                </View>
-              ) : (
-                recommendations.map((rec, idx) => (
-                  <SidebarItem
-                    key={rec.id}
-                    recommendation={rec}
-                    isSelected={selectedRec?.id === rec.id && !showNewForm}
-                    onSelect={handleSelectRec}
-                    index={idx}
-                    total={recommendations.length}
-                  />
-                ))
-              )}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Main Content */}
-        <View style={styles.contentArea}>
-          {/* Generating State */}
-          {generating && generatingStatus && (
-            <GeneratingView {...generatingStatus} />
-          )}
-
-          {/* New Form */}
-          {!generating && showNewForm && (
-            <ScrollView
-              style={styles.newFormContainer}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              nestedScrollEnabled
-              contentContainerStyle={{ paddingBottom: 140 }}
-            >
-              <View style={styles.newFormContent}>
-                <Text style={styles.newFormTitle}>✨ Create New Outfit</Text>
-                <Text style={styles.newFormSubtitle}>Tell me what you're looking for</Text>
-
-                {/* Quick Prompts */}
-                <Text style={styles.quickPromptsLabel}>Quick suggestions:</Text>
-                <View style={styles.quickPromptsGrid}>
-                  {QUICK_PROMPTS.map((p, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={[styles.quickPromptCard, query === p.text && styles.quickPromptCardActive]}
-                      onPress={() => setQuery(p.text)}
-                    >
-                      <Text style={styles.quickPromptIcon}>{p.icon}</Text>
-                      <Text style={[styles.quickPromptText, query === p.text && styles.quickPromptTextActive]}>
-                        {p.text}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* Custom Input */}
-                <Text style={styles.inputLabel}>Or describe your own:</Text>
-                <View style={styles.inputContainer}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g., Smart casual for a networking event..."
-                    placeholderTextColor={COLORS.textMuted}
-                    value={query}
-                    onChangeText={setQuery}
-                    multiline
-                    maxLength={200}
-                    returnKeyType="done"
-                  />
-                </View>
-
-                {/* Generate Button */}
+          {isMobileLayout ? (
+            <>
+              {/* Mobile Header */}
+              <View style={styles.mobileHeader}>
                 <TouchableOpacity
-                  style={[styles.generateButton, (!query.trim() || processedCount < 2) && styles.buttonDisabled]}
-                  onPress={handleGenerate}
-                  disabled={!query.trim() || processedCount < 2}
-                  activeOpacity={0.8}
+                  style={styles.menuButton}
+                  onPress={() => setShowDrawer(true)}
+                  activeOpacity={0.85}
                 >
+                  <Text style={styles.menuButtonText}>☰</Text>
+                </TouchableOpacity>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.mobileTitle}>Style Studio</Text>
+                  <Text style={styles.mobileSubtitle}>Ask for outfits from your wardrobe</Text>
+                </View>
+
+                <TouchableOpacity style={styles.newRequestPill} onPress={() => setShowNewForm(true)} activeOpacity={0.9}>
                   <LinearGradient
-                    colors={(!query.trim() || processedCount < 2)
-                      ? [COLORS.surface, COLORS.surfaceLight]
-                      : COLORS.gradients.accent}
-                    style={styles.generateButtonGradient}
+                    colors={COLORS.gradients.primary}
+                    style={styles.newRequestPillGrad}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                   >
-                    <Text style={styles.generateButtonText}>🚀 Generate Outfits</Text>
+                    <Text style={styles.newRequestPillText}>＋ New</Text>
                   </LinearGradient>
                 </TouchableOpacity>
-
-                {processedCount < 2 && (
-                  <Text style={styles.warningText}>⚠️ Add at least 2 analyzed wardrobe items first</Text>
-                )}
-              </View>
-            </ScrollView>
-          )}
-
-          {/* Selected Recommendation */}
-          {!generating && !showNewForm && selectedRec && (
-            <ScrollView
-              style={styles.recommendationScroll}
-              contentContainerStyle={styles.recommendationScrollContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              nestedScrollEnabled
-            >
-              {/* Compact Header */}
-              <View style={styles.recHeaderCompact}>
-                <View style={styles.recHeaderLeft}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.recTitleSmall} numberOfLines={2}>
-                      {(selectedRec.query || '').trim()}
-                    </Text>
-                  </View>
-                </View>
               </View>
 
-              {/* Outfit Tabs */}
-              {selectedRec.outfits && selectedRec.outfits.length > 0 && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.outfitTabsRow}
-                  nestedScrollEnabled
+              <MobileDrawer
+                visible={showDrawer}
+                onClose={() => setShowDrawer(false)}
+                recommendations={recommendations}
+                selectedId={selectedRec?.id}
+                onSelect={handleSelectRec}
+                onNewRequest={() => {
+                  setShowNewForm(true);
+                  setShowDrawer(false);
+                }}
+              />
+            </>
+          ) : (
+            /* Desktop Sidebar */
+            <View style={styles.sidebar}>
+              <View style={styles.sidebarHeader}>
+                <Text style={styles.sidebarTitle}>✨ Style Studio</Text>
+                <Text style={styles.sidebarSubtitle}>{recommendations.length} sessions</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.newButton}
+                onPress={() => setShowNewForm(true)}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={COLORS.gradients.primary}
+                  style={styles.newButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
                 >
-                  {selectedRec.outfits.map((_, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={[styles.outfitTab, selectedOutfitIndex === idx && styles.outfitTabActive]}
-                      onPress={() => setSelectedOutfitIndex(idx)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={[styles.outfitTabText, selectedOutfitIndex === idx && styles.outfitTabTextActive]}>
-                        #{idx + 1}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
+                  <Text style={styles.newButtonText}>+ New Request</Text>
+                </LinearGradient>
+              </TouchableOpacity>
 
-              {/* Outfit Content (no nested ScrollView) */}
-              {selectedRec.outfits && selectedRec.outfits.length > 0 ? (
-                <OutfitDisplay
-                  outfit={selectedRec.outfits[selectedOutfitIndex]}
-                  index={selectedOutfitIndex}
-                  wardrobeItems={wardrobeItems}
-                  onTryOn={handleTryOn}
-                  loadingTryOn={loadingTryOn}
-                  recommendationId={selectedRec.id}
-                  onViewImage={handleViewImage}
-                  showTryOnSection={false}
-                />
-              ) : (
-                <View style={styles.noOutfits}>
-                  <Text style={styles.noOutfitsIcon}>
-                    {selectedRec.status === 'processing' ? '⏳' : '❌'}
-                  </Text>
-                  <Text style={styles.noOutfitsText}>
-                    {selectedRec.status === 'processing'
-                      ? 'Creating your outfits...'
-                      : 'No outfits generated'}
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-          )}
-
-          {/* Empty State - No Selection */}
-          {!generating && !showNewForm && !selectedRec && (
-            <View style={styles.emptyContent}>
-              <Text style={styles.emptyContentIcon}>👗</Text>
-              <Text style={styles.emptyContentTitle}>Welcome to Style Studio</Text>
-              <Text style={styles.emptyContentText}>
-                Click "New Request" to get smart outfit recommendations from your wardrobe
-              </Text>
+              <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
+                {recommendations.length === 0 ? (
+                  <View style={styles.emptyHistory}>
+                    <Text style={styles.emptyHistoryIcon}>📭</Text>
+                    <Text style={styles.emptyHistoryText}>No history yet</Text>
+                  </View>
+                ) : (
+                  recommendations.map((rec, idx) => (
+                    <SidebarItem
+                      key={rec.id}
+                      recommendation={rec}
+                      isSelected={selectedRec?.id === rec.id && !showNewForm}
+                      onSelect={handleSelectRec}
+                      index={idx}
+                      total={recommendations.length}
+                    />
+                  ))
+                )}
+              </ScrollView>
             </View>
           )}
+
+          {/* Main Content */}
+          <View style={styles.contentArea}>
+            {/* Generating State */}
+            {generating && generatingStatus && (
+              <GeneratingView {...generatingStatus} />
+            )}
+
+            {/* New Form */}
+            {!generating && showNewForm && (
+              <ScrollView
+                style={styles.newFormContainer}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                nestedScrollEnabled
+                contentContainerStyle={{ paddingBottom: 140 }}
+              >
+                <View style={styles.newFormContent}>
+                  <Text style={styles.newFormTitle}>✨ Create New Outfit</Text>
+                  <Text style={styles.newFormSubtitle}>Tell me what you're looking for</Text>
+
+                  {/* Quick Prompts */}
+                  <Text style={styles.quickPromptsLabel}>Quick suggestions:</Text>
+                  <View style={styles.quickPromptsGrid}>
+                    {QUICK_PROMPTS.map((p, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[styles.quickPromptCard, query === p.text && styles.quickPromptCardActive]}
+                        onPress={() => setQuery(p.text)}
+                      >
+                        <Text style={styles.quickPromptIcon}>{p.icon}</Text>
+                        <Text style={[styles.quickPromptText, query === p.text && styles.quickPromptTextActive]}>
+                          {p.text}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Custom Input */}
+                  <Text style={styles.inputLabel}>Or describe your own:</Text>
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g., Smart casual for a networking event..."
+                      placeholderTextColor={COLORS.textMuted}
+                      value={query}
+                      onChangeText={setQuery}
+                      multiline
+                      maxLength={200}
+                      returnKeyType="done"
+                    />
+                  </View>
+
+                  {/* Generate Button */}
+                  <TouchableOpacity
+                    style={[styles.generateButton, (!query.trim() || processedCount < 2) && styles.buttonDisabled]}
+                    onPress={handleGenerate}
+                    disabled={!query.trim() || processedCount < 2}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={(!query.trim() || processedCount < 2)
+                        ? [COLORS.surface, COLORS.surfaceLight]
+                        : COLORS.gradients.accent}
+                      style={styles.generateButtonGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      <Text style={styles.generateButtonText}>🚀 Generate Outfits</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  {processedCount < 2 && (
+                    <Text style={styles.warningText}>⚠️ Add at least 2 analyzed wardrobe items first</Text>
+                  )}
+                </View>
+              </ScrollView>
+            )}
+
+            {/* Selected Recommendation */}
+            {!generating && !showNewForm && selectedRec && (
+              <ScrollView
+                style={styles.recommendationScroll}
+                contentContainerStyle={styles.recommendationScrollContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                nestedScrollEnabled
+              >
+                {/* Compact Header */}
+                <View style={styles.recHeaderCompact}>
+                  <View style={styles.recHeaderLeft}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.recTitleSmall} numberOfLines={2}>
+                        {(selectedRec.query || '').trim()}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Outfit Tabs */}
+                {selectedRec.outfits && selectedRec.outfits.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.outfitTabsRow}
+                    nestedScrollEnabled
+                  >
+                    {selectedRec.outfits.map((_, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[styles.outfitTab, selectedOutfitIndex === idx && styles.outfitTabActive]}
+                        onPress={() => setSelectedOutfitIndex(idx)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.outfitTabText, selectedOutfitIndex === idx && styles.outfitTabTextActive]}>
+                          #{idx + 1}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+
+                {/* Outfit Content (no nested ScrollView) */}
+                {selectedRec.outfits && selectedRec.outfits.length > 0 ? (
+                  <OutfitDisplay
+                    outfit={selectedRec.outfits[selectedOutfitIndex]}
+                    index={selectedOutfitIndex}
+                    wardrobeItems={wardrobeItems}
+                    onTryOn={handleTryOn}
+                    loadingTryOn={loadingTryOn}
+                    recommendationId={selectedRec.id}
+                    onViewImage={handleViewImage}
+                    showTryOnSection={false}
+                  />
+                ) : (
+                  <View style={styles.noOutfits}>
+                    <Text style={styles.noOutfitsIcon}>
+                      {selectedRec.status === 'processing' ? '⏳' : '❌'}
+                    </Text>
+                    <Text style={styles.noOutfitsText}>
+                      {selectedRec.status === 'processing'
+                        ? 'Creating your outfits...'
+                        : 'No outfits generated'}
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+
+            {/* Empty State - No Selection */}
+            {!generating && !showNewForm && !selectedRec && (
+              <View style={styles.emptyContent}>
+                <Text style={styles.emptyContentIcon}>👗</Text>
+                <Text style={styles.emptyContentTitle}>Welcome to Style Studio</Text>
+                <Text style={styles.emptyContentText}>
+                  Click "New Request" to get smart outfit recommendations from your wardrobe
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
+
+        <ImagePreviewModal
+          visible={showImageModal}
+          imageUrl={selectedImageUrl}
+          onClose={() => setShowImageModal(false)}
+        />
+
+        <FlowNavBar
+          prev={{ route: 'Wardrobe', label: 'Back: Wardrobe', icon: '👗', enabled: true }}
+          next={null}
+        />
       </View>
-
-          <ImagePreviewModal
-            visible={showImageModal}
-            imageUrl={selectedImageUrl}
-            onClose={() => setShowImageModal(false)}
-          />
-
-          <FlowNavBar
-            prev={{ route: 'Wardrobe', label: 'Back: Wardrobe', icon: '👗', enabled: true }}
-            next={null}
-          />
-        </View>
     </KeyboardAvoidingView>
   );
 }

@@ -99,9 +99,25 @@ async def generate_recommendation_task(
             
             # Get recently used items to exclude
             recently_used_ids = get_recently_used_item_ids(db, user_id, num_recommendations=3)
-            print(f"   Excluding recently used: {len(recently_used_ids)} items")
-            if recently_used_ids:
-                print(f"      Item IDs: {recently_used_ids[:10]}")
+
+            # IMPORTANT:
+            # For small wardrobes, excluding "recently used" can exclude *all* items,
+            # causing vector search to return 0 candidates and the whole background task to fail.
+            # Keep a minimum pool of items available for selection.
+            processed_items_count = db.query(WardrobeItem).filter(
+                WardrobeItem.user_id == user_id,
+                WardrobeItem.processing_status == ProcessingStatus.COMPLETED
+            ).count()
+
+            min_available_pool = 5
+            max_exclude = max(0, min(15, processed_items_count - min_available_pool))
+            exclude_ids = recently_used_ids[:max_exclude]
+
+            print(f"   Processed wardrobe items: {processed_items_count}")
+            print(f"   Recently used items (from history): {len(recently_used_ids)}")
+            print(f"   Excluding recently used: {len(exclude_ids)} items (keeping >= {min_available_pool} items available)")
+            if exclude_ids:
+                print(f"      Excluded Item IDs: {exclude_ids[:10]}")
             
             # Search vector store for candidate items
             try:
@@ -112,8 +128,19 @@ async def generate_recommendation_task(
                     user_email=user_email,
                     query_embedding=query_embedding_vec,
                     limit=40,
-                    exclude_ids=recently_used_ids[:15]  # Hard exclude last N
+                    exclude_ids=exclude_ids  # Hard exclude last N (bounded for small wardrobes)
                 )
+
+                # If we excluded too aggressively (or the user has a tiny wardrobe), retry without exclusions.
+                if not candidate_results and exclude_ids:
+                    print(f"   ⚠️  0 candidates after exclusions; retrying search without exclusions...")
+                    candidate_results = vector_store.search_wardrobe_items(
+                        user_id=user_id,
+                        user_email=user_email,
+                        query_embedding=query_embedding_vec,
+                        limit=40,
+                        exclude_ids=None
+                    )
                 
                 print(f"   ✓ Found {len(candidate_results)} candidate items")
                 if candidate_results:
@@ -166,6 +193,14 @@ async def generate_recommendation_task(
                 # Keep items WITH scores for ranking (don't discard!)
                 wardrobe_items_with_scores = diverse_candidates
                 wardrobe_items = [item for item, score in diverse_candidates]
+
+                # If vector search yields nothing (e.g., empty Chroma collection), fall back to DB items.
+                if not wardrobe_items:
+                    print(f"   ⚠️  Vector search returned 0 usable items; falling back to DB processed items")
+                    wardrobe_items = db.query(WardrobeItem).filter(
+                        WardrobeItem.user_id == user_id,
+                        WardrobeItem.processing_status == ProcessingStatus.COMPLETED
+                    ).limit(20).all()
             except Exception as e:
                 print(f"   ⚠️  Vector search failed: {e}, falling back to all items")
                 wardrobe_items = db.query(WardrobeItem).filter(

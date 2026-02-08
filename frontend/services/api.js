@@ -96,9 +96,9 @@ export const userImagesAPI = {
     console.log('imageUri type:', typeof imageUri);
     console.log('Is File:', imageUri instanceof File);
     console.log('Is Blob:', imageUri instanceof Blob);
-    
+
     let file;
-    
+
     try {
       // Handle File object directly (from web file input)
       if (imageUri instanceof File) {
@@ -113,7 +113,7 @@ export const userImagesAPI = {
       // Handle string URIs (blob:, http://, file://)
       else if (typeof imageUri === 'string') {
         console.log('String URI:', imageUri.substring(0, 50));
-        
+
         try {
           const response = await fetch(imageUri);
           console.log('Fetch response status:', response.status);
@@ -143,7 +143,7 @@ export const userImagesAPI = {
       formData.append('file', file, file.name);
 
       console.log('POST to:', API_ENDPOINTS.UPLOAD_USER_IMAGE);
-      
+
       const response = await api.post(API_ENDPOINTS.UPLOAD_USER_IMAGE, formData);
       console.log('Upload success:', response.status, response.data);
       return response.data;
@@ -165,7 +165,7 @@ export const userImagesAPI = {
       console.log('API: Data type:', typeof response.data);
       console.log('API: Is array:', Array.isArray(response.data));
       console.log('API: Received', response.data?.length || 0, 'images');
-      
+
       // Ensure we return an array
       if (!response.data) {
         console.warn('API: No data in response');
@@ -199,9 +199,9 @@ export const wardrobeAPI = {
     console.log('=== Wardrobe uploadImage ===');
     console.log('Input type:', typeof imageUri);
     console.log('Is File:', imageUri instanceof File);
-    
+
     let file;
-    
+
     try {
       // Handle File object directly (from web file input)
       if (imageUri instanceof File) {
@@ -283,7 +283,7 @@ export const recommendationsAPI = {
       query = queryOrObj;
       recType = recommendationType;
     }
-    
+
     console.log('');
     console.log('========================================');
     console.log('🚀 API: Generate Recommendations');
@@ -292,16 +292,16 @@ export const recommendationsAPI = {
     console.log('Query:', query);
     console.log('Type:', recType);
     console.log('Request body:', JSON.stringify({ query, recommendation_type: recType }));
-    
+
     try {
       const requestData = {
         query: query,
         recommendation_type: recType,
       };
       console.log('📤 Sending POST request...');
-      
+
       const response = await api.post(API_ENDPOINTS.GENERATE_RECOMMENDATIONS, requestData);
-      
+
       console.log('✅ API Response Status:', response.status);
       console.log('✅ API Response Data:', JSON.stringify(response.data));
       return response.data;
@@ -316,7 +316,9 @@ export const recommendationsAPI = {
     }
   },
 
-  getAll: async (limit = 10) => {
+  // Default to 100 so "Style Studio" shows meaningful history (latest-on-top)
+  // Backend currently caps limit at 100.
+  getAll: async (limit = 100) => {
     const response = await api.get(API_ENDPOINTS.GET_RECOMMENDATIONS, {
       params: { limit },
     });

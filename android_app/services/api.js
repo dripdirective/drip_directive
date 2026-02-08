@@ -434,7 +434,9 @@ export const recommendationsAPI = {
     }
   },
 
-  getAll: async (limit = 10) => {
+  // Default to 100 so "Style Studio" shows meaningful history (latest-on-top)
+  // Backend currently caps limit at 100.
+  getAll: async (limit = 100) => {
     const response = await api.get(API_ENDPOINTS.GET_RECOMMENDATIONS, {
       params: { limit },
     });
