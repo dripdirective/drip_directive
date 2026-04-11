@@ -9,31 +9,67 @@ import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import ResetPasswordScreen from './screens/ResetPasswordScreen';
+import LandingScreen from './screens/LandingScreen';
+import AboutScreen from './screens/AboutScreen';
+import ContactScreen from './screens/ContactScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import UserImagesScreen from './screens/UserImagesScreen';
 import MeScreen from './screens/MeScreen';
 import WardrobeScreen from './screens/WardrobeScreen';
 import RecommendationsScreen from './screens/RecommendationsScreen';
 
+// VibeSync Imports
+import VibeSyncWelcomeScreen from './screens/vibesync/VibeSyncWelcomeScreen';
+import VibeSyncQuizScreen from './screens/vibesync/VibeSyncQuizScreen';
+import VibeSyncResultsScreen from './screens/vibesync/VibeSyncResultsScreen';
+import VibeSyncWardrobeScreen from './screens/vibesync/VibeSyncWardrobeScreen';
+import VibeSyncOutfitsScreen from './screens/vibesync/VibeSyncOutfitsScreen';
+
 import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { COLORS } from './theme/colors';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const VibeSyncStack = createNativeStackNavigator();
+
+function VibeSyncNavigator() {
+  return (
+    <VibeSyncStack.Navigator screenOptions={{ headerShown: false }}>
+      <VibeSyncStack.Screen name="VibeSyncWelcome" component={VibeSyncWelcomeScreen} />
+      <VibeSyncStack.Screen name="VibeSyncQuiz" component={VibeSyncQuizScreen} />
+      <VibeSyncStack.Screen name="VibeSyncResults" component={VibeSyncResultsScreen} />
+      <VibeSyncStack.Screen name="VibeSyncWardrobe" component={VibeSyncWardrobeScreen} />
+      <VibeSyncStack.Screen name="VibeSyncOutfits" component={VibeSyncOutfitsScreen} />
+    </VibeSyncStack.Navigator>
+  );
+}
 
 // Enable proper browser back/forward on web by using URL-based linking.
 const linking = {
   prefixes: [createURL('/')],
   config: {
     screens: {
-      Login: '',
+      Landing: '',
+      About: 'about',
+      Contact: 'contact',
+      Login: 'login',
       Signup: 'signup',
+      ForgotPassword: 'forgot-password',
+      ResetPassword: 'reset-password',
       Main: {
         screens: {
           Me: 'me',
           Wardrobe: 'wardrobe',
           Recommendations: 'style-ai',
-
+          VibeSync: {
+            screens: {
+              VibeSyncWelcome: 'vibesync',
+              VibeSyncQuiz: 'vibesync/quiz',
+              VibeSyncResults: 'vibesync/results',
+              VibeSyncWardrobe: 'vibesync/wardrobe',
+              VibeSyncOutfits: 'vibesync/outfits',
+            },
+          },
         },
       },
     },
@@ -89,7 +125,10 @@ function MainTabs() {
 
 function AuthStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
+    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Landing">
+      <Stack.Screen name="Landing" component={LandingScreen} />
+      <Stack.Screen name="About" component={AboutScreen} />
+      <Stack.Screen name="Contact" component={ContactScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Signup" component={SignupScreen} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
@@ -99,7 +138,7 @@ function AuthStack() {
 }
 
 function AppNavigator() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, logout } = useAuth();
 
   if (loading) {
     return (
@@ -132,9 +171,13 @@ function AppNavigator() {
           <Stack.Screen
             name="Main"
             component={MainTabs}
-            options={{
+            options={({ navigation }) => ({
               headerTitle: () => (
-                <View style={styles.headerTitleContainer}>
+                <TouchableOpacity
+                  style={styles.headerTitleContainer}
+                  onPress={() => navigation.navigate('Me')}
+                  activeOpacity={0.9}
+                >
                   <Image
                     source={require('./assets/dripdirective_logo.jpg')}
                     style={styles.headerLogo}
@@ -142,12 +185,18 @@ function AppNavigator() {
                     accessibilityLabel="Dripdirective logo"
                   />
                   <Text style={styles.headerTitle}>Dripdirective</Text>
-                </View>
+                </TouchableOpacity>
               ),
               headerStyle: styles.header,
               headerTintColor: COLORS.textPrimary,
-            }}
+              headerRight: () => (
+                <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.9}>
+                  <Text style={styles.logoutText}>Logout</Text>
+                </TouchableOpacity>
+              ),
+            })}
           />
+          <Stack.Screen name="VibeSync" component={VibeSyncNavigator} options={{ headerShown: false }} />
         </Stack.Navigator>
       ) : (
         <AuthStack />
@@ -224,6 +273,19 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: COLORS.textPrimary,
+  },
+
+  logoutButton: {
+    marginRight: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: COLORS.error + '20',
+    borderRadius: 20,
+  },
+  logoutText: {
+    color: COLORS.error,
+    fontSize: 14,
+    fontWeight: '600',
   },
 
 

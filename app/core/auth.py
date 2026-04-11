@@ -13,6 +13,7 @@ from app.utils import (
     create_reset_token,
     verify_reset_token
 )
+import httpx
 from app.config import settings
 
 
@@ -75,7 +76,58 @@ def login_user(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
     
+    
     return True, "", {"access_token": access_token, "token_type": "bearer"}
+
+
+def google_login_user(
+    db: Session,
+    token: str
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Authenticate a user via Google Access token.
+    Registers the user if they don't exist.
+    """
+    try:
+        # Fetch the user profile from Google using the access token
+        response = httpx.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        if response.status_code != 200:
+            return False, f"Invalid token or failed to fetch user info: {response.text}", None
+            
+        idinfo = response.json()
+        email = idinfo.get('email')
+        if not email:
+            return False, "Email not provided by Google", None
+            
+        user = db.query(User).filter(User.email == email).first()
+        
+        if not user:
+            # Create a new user without a password (handled by OAuth)
+            user = User(
+                email=email,
+                hashed_password="oauth_user_no_password_set" 
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            
+        if not user.is_active:
+            return False, "Inactive user", None
+            
+        # Mint our app's JWT
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.email}, expires_delta=access_token_expires
+        )
+        
+        return True, "", {"access_token": access_token, "token_type": "bearer"}
+        
+    except ValueError as e:
+        return False, f"Invalid token: {str(e)}", None
 
 
 def get_user_info(user: User) -> Dict[str, Any]:

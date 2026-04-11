@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -20,6 +22,86 @@ import { profileAPI, userImagesAPI, aiProcessingAPI } from '../services/api';
 import { API_BASE_URL } from '../config/api';
 import FlowNavBar from '../components/FlowNavBar';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../theme/colors';
+
+const VibeSyncCard = ({ vibesyncData }) => {
+  const navigation = useNavigation();
+  const hasResults = !!vibesyncData;
+  const archetype = vibesyncData?.archetype
+    ? (vibesyncData.archetype.charAt(0).toUpperCase() + vibesyncData.archetype.slice(1))
+    : 'Style DNA';
+
+  // Archetype names map (simple version)
+  const displayArchetype =
+    vibesyncData?.archetype === 'architect'
+      ? 'The Architect'
+      : vibesyncData?.archetype === 'bohemian'
+        ? 'The Bohemian'
+        : vibesyncData?.archetype === 'minimalist'
+          ? 'The Minimalist'
+          : vibesyncData?.archetype === 'maximalist'
+            ? 'The Maximalist'
+            : archetype;
+
+  return (
+    <TouchableOpacity
+      style={styles.vibeCard}
+      activeOpacity={0.95}
+      onPress={() => {
+        if (hasResults) {
+          navigation.navigate('VibeSync', {
+            screen: 'VibeSyncResults',
+            params: { finalScores: vibesyncData.scores, saved: true },
+          });
+        } else {
+          navigation.navigate('VibeSync', { screen: 'VibeSyncWelcome' });
+        }
+      }}
+    >
+      <LinearGradient
+        colors={hasResults ? ['#2C3E50', '#000000'] : ['#1a1a2e', '#16213e', '#0f3460']}
+        style={styles.vibeGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.vibeBorder}>
+          <View style={styles.vibeContent}>
+            <View style={styles.vibeIconContainer}>
+              <Text style={{ fontSize: 32 }}>{hasResults ? '✨' : '🧬'}</Text>
+            </View>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={styles.vibeTitle}>{hasResults ? displayArchetype : 'Style DNA'}</Text>
+              <Text style={styles.vibeSubtitle}>
+                {hasResults ? 'View your analysis & wardrobe' : 'Unlock your true fashion identity'}
+              </Text>
+
+              <View style={styles.vibeTagContainer}>
+                {hasResults ? (
+                  <>
+                    <View style={styles.vibeTag}>
+                      <Text style={styles.vibeTagText}>Analysis Ready</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.vibeTag}>
+                      <Text style={styles.vibeTagText}>AI Analysis</Text>
+                    </View>
+                    <View style={styles.vibeTag}>
+                      <Text style={styles.vibeTagText}>Curated Outfits</Text>
+                    </View>
+                  </>
+                )}
+              </View>
+            </View>
+            <View style={styles.vibeArrow}>
+              <Ionicons name="arrow-forward" size={24} color={hasResults ? '#4cd137' : '#e94560'} />
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+};
 
 // --- Select options (ported from old ProfileScreen UX) ---
 const BODY_TYPES = [
@@ -859,7 +941,7 @@ export default function MeScreen() {
                 );
                 finalUri = manipulated.uri;
               }
-            } catch {}
+            } catch { }
           }
 
           const uploaded = fileObj
@@ -929,7 +1011,7 @@ export default function MeScreen() {
           try {
             await userImagesAPI.deleteImage(imageId);
             setImages(prev => prev.filter(img => img.id !== imageId));
-          } catch {}
+          } catch { }
         },
       },
     ]);
@@ -1206,6 +1288,13 @@ export default function MeScreen() {
           {aiProfile?.analysis && (
             <AIProfileCard profile={aiProfile} />
           )}
+
+          {/* VibeSync / Style DNA - Feature Section */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Style DNA</Text>
+            <Text style={[styles.cardSubtle, { marginBottom: SPACING.md }]}>VibeSync analysis + curated lanes</Text>
+            <VibeSyncCard vibesyncData={additionalInfoObj?.vibesync_results} />
+          </View>
         </View>
       </ScrollView>
 
@@ -1505,5 +1594,64 @@ const styles = StyleSheet.create({
   imagePreviewImage: { width: '100%', height: '100%' },
   emptyCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyCenterText: { fontSize: 14, color: COLORS.textMuted },
+
+  // VibeSync Card (Premium)
+  vibeCard: {
+    borderRadius: BORDER_RADIUS.xl,
+    overflow: 'hidden',
+    ...SHADOWS.lg,
+  },
+  vibeGradient: {
+    padding: 2,
+  },
+  vibeBorder: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: BORDER_RADIUS.xl - 2,
+    padding: 20,
+  },
+  vibeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  vibeIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  vibeTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 4,
+  },
+  vibeSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: 10,
+  },
+  vibeTagContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  vibeTag: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  vibeTagText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  vibeArrow: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 8,
+    borderRadius: 20,
+  },
 });
 

@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from app.database import engine, Base, get_db
-from app.routers import auth, users, images, wardrobe, ai_processing, recommendations
+from app.routers import auth, users, images, wardrobe, ai_processing, recommendations, leads
 from app.config import settings
 from app.core.vector_store import get_vector_store
 from app.middleware.validation import setup_validation
@@ -142,6 +142,7 @@ app.include_router(images.router, prefix="/api/images", tags=["User Images"])
 app.include_router(wardrobe.router, prefix="/api/wardrobe", tags=["Wardrobe"])
 app.include_router(ai_processing.router, prefix="/api/ai", tags=["AI Processing"])
 app.include_router(recommendations.router, prefix="/api/recommendations", tags=["Recommendations"])
+app.include_router(leads.router, prefix="/api/leads", tags=["Leads"])
 
 
 @app.get("/")

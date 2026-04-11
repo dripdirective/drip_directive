@@ -105,6 +105,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return 10  # 10 AI requests per minute
         if "/recommendations/generate" in endpoint:
             return 5  # 5 recommendation requests per minute
+        if "/tryon" in endpoint:
+            return 5  # 5 try-on requests per minute
         return None
     
     async def dispatch(self, request: Request, call_next):

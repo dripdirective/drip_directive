@@ -30,7 +30,19 @@ class S3Storage:
                 
                 self.boto3 = boto3
                 self.ClientError = ClientError
-                self.s3_client = boto3.client('s3', region_name=settings.AWS_REGION)
+                session_kwargs = {"region_name": settings.AWS_REGION}
+                if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+                    session_kwargs.update({
+                        "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
+                        "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
+                    })
+                    if settings.AWS_SESSION_TOKEN:
+                        session_kwargs["aws_session_token"] = settings.AWS_SESSION_TOKEN
+                elif settings.AWS_PROFILE:
+                    session_kwargs["profile_name"] = settings.AWS_PROFILE
+
+                session = boto3.session.Session(**session_kwargs)
+                self.s3_client = session.client('s3')
                 self.bucket_name = settings.S3_BUCKET_NAME
                 self.cloudfront_domain = settings.CLOUDFRONT_DOMAIN
                 logger.info(f"✅ S3 storage initialized (bucket: {self.bucket_name})")

@@ -60,7 +60,10 @@ zip -r "$ARTIFACT" \
 ## 2) Upload the zip to S3 (on your laptop)
 
 ```bash
-aws s3 cp "$ARTIFACT" "s3://drip-directive/releases/$ARTIFACT" --region ap-south-1
+aws s3 cp backend_v7.zip "s3://drip-directive/releases/drip_directive_backend_20260208_214533.zip" --region ap-south-1
+
+aws s3 cp drip_directive_backend_20260208_214533.zip "s3://drip-directive/releases/drip_directive_backend_20260208_214533.zip" --region ap-south-1
+
 aws s3 ls "s3://drip-directive/releases/" --region ap-south-1
 ```
 
@@ -89,7 +92,7 @@ mkdir -p ~/drip_release/backend
 cd ~/drip_release/backend
 
 aws s3 cp "s3://drip-directive/releases/drip_directive_backend.zip" ./drip_directive_backend.zip --region ap-south-1
-aws s3 cp "s3://drip-directive/releases/dripdirective-backend-ec2.zip" "dripdirective-backend-ec2.zip"
+aws s3 cp "s3://drip-directive/releases/drip_directive_backend_20260208_214533.zip" "drip_directive_backend_20260208_214533.zip"
 
 unzip -o drip_directive_backend.zip
 ls

@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List, Any
 from datetime import datetime
 from app.models import BodyType, FaceTone, ImageType, DressType, DressStyle, ProcessingStatus
+from app.core.storage import public_file_url
 
 
 # Authentication Schemas
@@ -18,6 +19,19 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+# Marketing / Leads
+class StyleDNALeadCreate(BaseModel):
+    email: EmailStr
+    archetype: Optional[str] = None
+    scores: Optional[dict] = None
+    source: Optional[str] = None
+
+
+class StyleDNALeadResponse(BaseModel):
+    id: int
+    status: str  # "created" | "updated"
 
 
 # User Profile Schemas
@@ -141,8 +155,43 @@ class RecommendationRequest(BaseModel):
         raise ValueError("query must be a string")
 
 
-class TryOnRequest(BaseModel):
+class TryOnOptionsBase(BaseModel):
+    user_image_id: Optional[int] = None
+    category: Optional[str] = None
+    garment_photo_type: Optional[str] = None
+
+    @field_validator("category")
+    @classmethod
+    def normalize_tryon_category(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+
+        normalized = str(v).strip().lower()
+        allowed = {"tops", "bottoms", "one-pieces"}
+        if normalized not in allowed:
+            raise ValueError("category must be one of: tops, bottoms, one-pieces")
+        return normalized
+
+    @field_validator("garment_photo_type")
+    @classmethod
+    def normalize_garment_photo_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+
+        normalized = str(v).strip().lower()
+        allowed = {"model", "flat-lay"}
+        if normalized not in allowed:
+            raise ValueError("garment_photo_type must be one of: model, flat-lay")
+        return normalized
+
+
+class TryOnRequest(TryOnOptionsBase):
     outfit_index: int
+    wardrobe_item_id: Optional[int] = None
+
+
+class WardrobeTryOnRequest(TryOnOptionsBase):
+    pass
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
@@ -155,7 +204,12 @@ class PasswordResetConfirm(BaseModel):
 
 class TryOnResponse(BaseModel):
     image_path: Optional[str] = None
-    outfit_index: int
+    outfit_index: Optional[int] = None
+    user_image_id: Optional[int] = None
+    wardrobe_item_id: Optional[int] = None
+    category: Optional[str] = None
+    garment_photo_type: Optional[str] = None
+    provider: Optional[str] = None
 
 
 class OutfitItem(BaseModel):
@@ -232,7 +286,7 @@ class RecommendationResponse(BaseModel):
                         styling_tips=outfit.get("styling_tips") if isinstance(outfit.get("styling_tips"), list) else None,
                         items=items,
                         wardrobe_item_ids=item_ids,
-                        tryon_image_path=outfit.get("tryon_image_path")
+                        tryon_image_path=public_file_url(outfit.get("tryon_image_path")) if outfit.get("tryon_image_path") else None
                     ))
             except json.JSONDecodeError:
                 pass
@@ -255,9 +309,34 @@ class RecommendationResponse(BaseModel):
         )
 
 
+class WorkspaceStyleSnapshot(BaseModel):
+    recommended_colors: List[str] = []
+    recommended_styles: List[str] = []
+    notes: Optional[str] = None
+
+
+class WorkspaceLatestRecommendation(BaseModel):
+    id: int
+    query: str
+    created_at: datetime
+    status: str = "completed"
+    outfit_count: int = 0
+
+
+class WorkspaceSummaryResponse(BaseModel):
+    profile_exists: bool
+    profile_completion: int
+    user_images_total: int
+    user_images_processed: int
+    wardrobe_items_total: int
+    wardrobe_items_processed: int
+    recommendations_total: int
+    style_snapshot: Optional[WorkspaceStyleSnapshot] = None
+    latest_recommendation: Optional[WorkspaceLatestRecommendation] = None
+
+
 # AI Processing Schemas
 class ProcessingResponse(BaseModel):
     status: str
     message: str
     task_id: Optional[str] = None
-

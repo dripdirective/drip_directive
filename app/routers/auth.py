@@ -10,8 +10,13 @@ from app.core.auth import (
     login_user, 
     get_user_info, 
     process_password_reset_request, 
-    confirm_password_reset
+    confirm_password_reset,
+    google_login_user
 )
+from pydantic import BaseModel
+
+class GoogleToken(BaseModel):
+    token: str
 
 router = APIRouter()
 
@@ -78,6 +83,28 @@ async def login(request: Request, db: Session = Depends(get_db)):
     
     return token_data
 
+
+
+@router.post("/google", response_model=Token)
+async def google_login(request: GoogleToken, db: Session = Depends(get_db)):
+    """
+    User login endpoint for Google SSO.
+    """
+    success, error, token_data = google_login_user(db, request.token)
+    
+    if not success:
+        if error == "Inactive user":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=error
+            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=error,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return token_data
 
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)

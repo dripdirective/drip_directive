@@ -179,3 +179,21 @@ class Recommendation(Base):
     recommendation_embedding = Column(Text, nullable=True)  # JSON array of floats (use pgvector in Postgres)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+
+class StyleDNALead(Base):
+    """
+    Lightweight marketing lead capture from the public Style DNA quiz.
+    Stored separately from authenticated user profiles.
+    """
+
+    __tablename__ = "style_dna_leads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    archetype = Column(String, nullable=True)
+    scores = Column(Text, nullable=True)  # JSON string
+    source = Column(String, nullable=True)  # e.g. "web_landing"
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+

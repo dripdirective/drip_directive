@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 from typing import List
 from app.database import get_db
 from app.models import User, WardrobeItem
-from app.schemas import WardrobeItemResponse, WardrobeItemWithImages, WardrobeImageResponse
+from app.schemas import WardrobeItemResponse, WardrobeItemWithImages, WardrobeImageResponse, WardrobeTryOnRequest, TryOnResponse
 from app.utils import get_current_active_user
 from app.config import settings
 from app.core.wardrobe import (
@@ -11,6 +11,7 @@ from app.core.wardrobe import (
     get_wardrobe_item_by_id,
     delete_wardrobe_item
 )
+from app.core.tryon import TryOnServiceError, generate_wardrobe_item_tryon
 from app.core.storage import public_file_url
 from app.core.utils import validate_and_read_image
 
@@ -111,6 +112,37 @@ async def get_item(
         img_models.append(img_data)
     item_data.images = img_models
     return item_data
+
+
+@router.post("/items/{item_id}/tryon", response_model=TryOnResponse)
+async def generate_wardrobe_tryon_image(
+    item_id: int,
+    request: WardrobeTryOnRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Generate a virtual try-on image for a specific wardrobe item."""
+    try:
+        result = await generate_wardrobe_item_tryon(
+            db,
+            current_user=current_user,
+            wardrobe_item_id=item_id,
+            user_image_id=request.user_image_id,
+            category=request.category,
+            garment_photo_type=request.garment_photo_type,
+        )
+    except TryOnServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    return {
+        "image_path": result.get("image_path"),
+        "outfit_index": result.get("outfit_index"),
+        "user_image_id": result.get("user_image_id"),
+        "wardrobe_item_id": result.get("wardrobe_item_id"),
+        "category": result.get("category"),
+        "garment_photo_type": result.get("garment_photo_type"),
+        "provider": result.get("provider"),
+    }
 
 
 @router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)

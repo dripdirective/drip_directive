@@ -10,8 +10,8 @@ from app.core.recommendations import (
     get_user_recommendations,
     get_recommendation_by_id,
     get_recommendation_outfits,
-    generate_tryon_for_outfit
 )
+from app.core.tryon import TryOnServiceError, generate_recommendation_tryon
 from app.core.images import count_processed_user_images
 from app.core.wardrobe import count_processed_wardrobe_items, count_total_wardrobe_items, get_wardrobe_items
 
@@ -137,32 +137,27 @@ async def generate_tryon_image(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Recommendation not found"
         )
-    
-    success, error, image_path = await generate_tryon_for_outfit(
-        db,
-        current_user.id,
-        recommendation,
-        request.outfit_index
-    )
-    
-    if not success:
-        if "Invalid outfit index" in error:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=error
-            )
-        elif "No processed user image" in error:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=error
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=error
-            )
-    
+
+    try:
+        result = await generate_recommendation_tryon(
+            db,
+            current_user=current_user,
+            recommendation=recommendation,
+            outfit_index=request.outfit_index,
+            user_image_id=request.user_image_id,
+            wardrobe_item_id=request.wardrobe_item_id,
+            category=request.category,
+            garment_photo_type=request.garment_photo_type,
+        )
+    except TryOnServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
     return {
-        "image_path": image_path,
-        "outfit_index": request.outfit_index
+        "image_path": result.get("image_path"),
+        "outfit_index": result.get("outfit_index"),
+        "user_image_id": result.get("user_image_id"),
+        "wardrobe_item_id": result.get("wardrobe_item_id"),
+        "category": result.get("category"),
+        "garment_photo_type": result.get("garment_photo_type"),
+        "provider": result.get("provider"),
     }

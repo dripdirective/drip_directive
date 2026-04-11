@@ -38,6 +38,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:19006,"
         "http://localhost:3000,"
         "http://127.0.0.1:3000,"
+        "http://localhost:5174,"
+        "http://127.0.0.1:5174,"
+        "http://localhost:4174,"
+        "http://127.0.0.1:4174,"
+        "http://localhost:8085,"
+        "http://127.0.0.1:8085,"
         "http://192.168.0.105:8081,"
         "exp://*,"
         "*"
@@ -77,7 +83,30 @@ class Settings(BaseSettings):
     
     # Legacy (for backwards compatibility)
     TRYON_MODEL: str = "gemini-2.0-flash-exp"
-    
+
+    # Virtual try-on provider
+    # "legacy" keeps the current prompt-based image generation fallback.
+    # "runpod" uses a Runpod Serverless endpoint.
+    # "runpod_pod" uses a dedicated long-lived Runpod Pod exposed over HTTP.
+    VIRTUAL_TRYON_PROVIDER: str = "legacy"
+    RUNPOD_API_BASE_URL: str = "https://api.runpod.ai/v2"
+    RUNPOD_API_KEY: Optional[str] = None
+    RUNPOD_TRYON_ENDPOINT_ID: Optional[str] = None
+    RUNPOD_TRYON_HTTP_TIMEOUT_SECONDS: int = 30
+    RUNPOD_TRYON_POLL_INTERVAL_MS: int = 2000
+    RUNPOD_TRYON_TIMEOUT_SECONDS: int = 240
+    RUNPOD_TRYON_EXECUTION_TIMEOUT_SECONDS: int = 180
+    RUNPOD_TRYON_TTL_SECONDS: int = 600
+    RUNPOD_TRYON_MAX_IMAGE_DIMENSION: int = 1024
+    RUNPOD_TRYON_GARMENT_PHOTO_TYPE: str = "flat-lay"
+    RUNPOD_TRYON_NUM_TIMESTEPS: int = 30
+    RUNPOD_TRYON_GUIDANCE_SCALE: float = 1.5
+    RUNPOD_TRYON_NUM_SAMPLES: int = 1
+    RUNPOD_TRYON_SEGMENTATION_FREE: bool = True
+    RUNPOD_POD_API_URL: Optional[str] = None
+    RUNPOD_POD_API_TOKEN: Optional[str] = None
+    RUNPOD_POD_HTTP_TIMEOUT_SECONDS: int = 300
+
     AI_PROCESSING_TIMEOUT: int = 300  # 5 minutes
     MAX_RECOMMENDATION_WARDROBE_ITEMS: int = 20
 
@@ -95,6 +124,10 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str = "dripdirective-uploads"  # S3 bucket name for uploads
     AWS_REGION: str = "us-east-1"  # AWS region
     CLOUDFRONT_DOMAIN: Optional[str] = None  # Optional CloudFront CDN domain (e.g., d1234abcd.cloudfront.net)
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_SESSION_TOKEN: Optional[str] = None
+    AWS_PROFILE: Optional[str] = None
 
     # S3 URL behavior
     # If your S3 bucket is private (Block Public Access ON), enable this for local testing so
@@ -151,4 +184,3 @@ if _using_default_secret:
     if _env in {"prod", "production"}:
         raise RuntimeError(msg)
     logger.warning(msg)
-
