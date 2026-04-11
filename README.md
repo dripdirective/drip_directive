@@ -67,6 +67,7 @@ This repo supports both:
 Pod deployment guide:
 
 - [docs/RUNPOD_FASHN_VTON_POD_DEPLOYMENT.md](docs/RUNPOD_FASHN_VTON_POD_DEPLOYMENT.md)
+- `deployment/runpod/fashn_vton_pod/backend_env_a4500.example` contains a ready-made backend preset if you deploy the pod on `RTX A4500`.
 
 Serverless deployment guide:
 

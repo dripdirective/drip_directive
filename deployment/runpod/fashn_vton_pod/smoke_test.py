@@ -21,6 +21,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--category", required=True, choices=["tops", "bottoms", "one-pieces"])
     parser.add_argument("--token", help="Bearer token if TRYON_API_TOKEN is configured on the pod.")
     parser.add_argument("--garment-photo-type", default="flat-lay", choices=["model", "flat-lay"])
+    parser.add_argument("--num-samples", default=1, type=int)
+    parser.add_argument("--num-timesteps", default=30, type=int)
+    parser.add_argument("--guidance-scale", default=1.5, type=float)
+    parser.add_argument("--segmentation-free", dest="segmentation_free", action="store_true")
+    parser.add_argument("--no-segmentation-free", dest="segmentation_free", action="store_false")
+    parser.set_defaults(segmentation_free=True)
     parser.add_argument("--timeout", default=300, type=int)
     parser.add_argument("--out", default=Path("tryon_output.png"), type=Path, help="Where to save the output image.")
     return parser.parse_args()
@@ -62,10 +68,10 @@ def main() -> int:
         "garment_image_base64": encode_image(args.garment),
         "category": args.category,
         "garment_photo_type": args.garment_photo_type,
-        "num_samples": 1,
-        "num_timesteps": 30,
-        "guidance_scale": 1.5,
-        "segmentation_free": True,
+        "num_samples": args.num_samples,
+        "num_timesteps": args.num_timesteps,
+        "guidance_scale": args.guidance_scale,
+        "segmentation_free": args.segmentation_free,
     }
 
     try:

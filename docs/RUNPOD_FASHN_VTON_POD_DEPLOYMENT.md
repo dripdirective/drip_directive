@@ -21,11 +21,22 @@ The repo now includes a dedicated pod-ready HTTP service plus backend support fo
 ## Recommended pod settings
 
 - Template: `Runpod PyTorch 2.4.0`
-- GPU: `RTX 4000 Ada`, `RTX A4500`, or `RTX A5000`
+- GPU: `RTX A4500`, `RTX 4000 Ada`, or `RTX A5000`
 - SSH: enabled
 - Exposed port: `8000` over HTTP
 - Container disk: `20 GB` minimum
 - Network volume: use the persistent volume for repo checkout and model weights
+
+## RTX A4500 notes
+
+`RTX A4500` is a valid pod choice for this setup. You do not need code changes in the pod service itself just because the GPU changes.
+
+Start with the normal backend try-on defaults first. If the pod later shows CUDA OOM or unstable latency, lower only:
+
+- `RUNPOD_TRYON_MAX_IMAGE_DIMENSION=960`
+- `RUNPOD_TRYON_NUM_TIMESTEPS=28`
+
+Everything else can stay the same.
 
 ## Lifecycle choice
 
@@ -154,6 +165,17 @@ RUNPOD_TRYON_NUM_SAMPLES=1
 RUNPOD_TRYON_SEGMENTATION_FREE=true
 ```
 
+If you are deploying on `RTX A4500`, you can also copy the ready-made preset from:
+
+- `deployment/runpod/fashn_vton_pod/backend_env_a4500.example`
+
+If you need a more conservative fallback for that card, keep the same block but lower:
+
+```env
+RUNPOD_TRYON_MAX_IMAGE_DIMENSION=960
+RUNPOD_TRYON_NUM_TIMESTEPS=28
+```
+
 Then restart the backend.
 
 ## Step 8: Smoke test the pod directly
@@ -171,6 +193,20 @@ python deployment/runpod/fashn_vton_pod/smoke_test.py \
 ```
 
 This script first checks `/healthz`, then sends a real `POST /tryon`, and saves the generated image to the output path you provide.
+
+For an `RTX A4500` conservative smoke test, you can use:
+
+```bash
+python deployment/runpod/fashn_vton_pod/smoke_test.py \
+  --base-url https://YOUR-POD-HTTP-URL \
+  --token "$TRYON_API_TOKEN" \
+  --person /path/to/person.jpg \
+  --garment /path/to/garment.jpg \
+  --category tops \
+  --num-timesteps 28 \
+  --guidance-scale 1.5 \
+  --out /tmp/tryon_output.png
+```
 
 ## Step 9: Test from the main backend
 
