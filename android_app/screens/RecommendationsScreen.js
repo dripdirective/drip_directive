@@ -561,7 +561,7 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
               const busy = busyItemId === `myntra:${p.product_id}`;
               return (
                 <View key={p.product_id} style={styles.myntraCard}>
-                  <Image source={{ uri: p.image }} style={styles.myntraImage} contentFit="cover" transition={150} />
+                  <Image source={{ uri: (p.image || '').replace('http://', 'https://') }} style={styles.myntraImage} contentFit="cover" transition={150} />
                   <View style={styles.myntraInfo}>
                     <Text style={styles.myntraBrand} numberOfLines={1}>{p.brand || 'Brand'}</Text>
                     <Text style={styles.myntraName} numberOfLines={2}>{p.name || ''}</Text>

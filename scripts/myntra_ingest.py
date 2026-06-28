@@ -83,6 +83,8 @@ def fetch_pdp(url: str) -> dict | None:
     for album in pdp.get("media", {}).get("albums", []):
         for img in album.get("images", []):
             u = (img.get("imageURL") or "").replace("\\/", "/")
+            if u.startswith("http://"):
+                u = "https://" + u[len("http://"):]  # Android blocks cleartext HTTP images
             if u:
                 images.append(u)
 
