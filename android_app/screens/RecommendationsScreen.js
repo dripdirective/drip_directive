@@ -14,10 +14,11 @@ import {
   useWindowDimensions,
   Modal,
   KeyboardAvoidingView,
+  Linking,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getApiErrorMessage, recommendationsAPI, wardrobeAPI } from '../services/api';
+import { getApiErrorMessage, recommendationsAPI, wardrobeAPI, myntraAPI } from '../services/api';
 import { API_BASE_URL } from '../config/api';
 import FlowNavBar from '../components/FlowNavBar';
 import LuxeBackground from '../components/luxe/LuxeBackground';
@@ -262,6 +263,17 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
   const [busyItemId, setBusyItemId] = useState(null);
   const [tryonError, setTryonError] = useState(null);
 
+  // Curated Myntra items to shop/try for this outfit.
+  const [myntraItems, setMyntraItems] = useState([]);
+  useEffect(() => {
+    let active = true;
+    myntraAPI
+      .getProducts(null, 6)
+      .then((items) => { if (active) setMyntraItems(Array.isArray(items) ? items : []); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   // layer=false → wear on the raw user photo; layer=true → wear on top of the current look.
   const runTryOn = async (itemId, { layer }) => {
     setTryonError(null);
@@ -277,13 +289,39 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
       const url = path.startsWith('http') ? path : `${API_BASE_URL}/${path}`;
       setLook((prev) => {
         const baseItems = layer && prev ? prev.itemIds.filter((id) => id !== itemId) : [];
-        return { url, path, itemIds: [...baseItems, itemId] };
+        const label = layer && prev ? prev.label : undefined;
+        return { url, path, itemIds: [...baseItems, itemId], label };
       });
     } catch (e) {
       setTryonError(getApiErrorMessage(e, 'Failed to generate try-on'));
     } finally {
       setBusyItemId(null);
     }
+  };
+
+  // Try a Myntra product on the user (starts a fresh look from the raw photo).
+  const runMyntraTryOn = async (product) => {
+    setTryonError(null);
+    const key = `myntra:${product.product_id}`;
+    setBusyItemId(key);
+    try {
+      const res = await myntraAPI.tryOnProduct(product.product_id);
+      const path = res?.image_path;
+      if (!path) {
+        setTryonError('Could not generate the try-on. Please try again.');
+        return;
+      }
+      const url = path.startsWith('http') ? path : `${API_BASE_URL}/${path}`;
+      setLook({ url, path, itemIds: [], label: `${product.brand || 'Myntra'} (Myntra)` });
+    } catch (e) {
+      setTryonError(getApiErrorMessage(e, 'Failed to generate try-on'));
+    } finally {
+      setBusyItemId(null);
+    }
+  };
+
+  const openBuy = (product) => {
+    if (product?.product_url) Linking.openURL(product.product_url).catch(() => {});
   };
 
   const getWardrobeItem = (itemId) => {
@@ -463,7 +501,7 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
           ) : look ? (
             <>
               <Text style={styles.tryonWearingLabel}>
-                Wearing: {look.itemIds.map((id) => getItemName(id)).join(' + ')}
+                Wearing: {[look.label, ...look.itemIds.map((id) => getItemName(id))].filter(Boolean).join(' + ')}
               </Text>
               <TouchableOpacity
                 style={styles.tryonImageContainer}
@@ -511,6 +549,50 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
               Tap “👗 Try on” on any item above to wear it on your photo. Then add more pieces to build the full look — your choice, top or bottom first.
             </Text>
           )}
+        </View>
+      )}
+
+      {/* Shop this look on Myntra — try the real product on, or buy it */}
+      {showTryOnSection && myntraItems.length > 0 && (
+        <View style={styles.myntraSection}>
+          <Text style={styles.sectionLabel}>🛍️  Shop this look on Myntra</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.myntraRow}>
+            {myntraItems.map((p) => {
+              const busy = busyItemId === `myntra:${p.product_id}`;
+              return (
+                <View key={p.product_id} style={styles.myntraCard}>
+                  <Image source={{ uri: p.image }} style={styles.myntraImage} contentFit="cover" transition={150} />
+                  <View style={styles.myntraInfo}>
+                    <Text style={styles.myntraBrand} numberOfLines={1}>{p.brand || 'Brand'}</Text>
+                    <Text style={styles.myntraName} numberOfLines={2}>{p.name || ''}</Text>
+                    <View style={styles.myntraPriceRow}>
+                      <Text style={styles.myntraPrice}>₹{p.price ?? p.mrp ?? '--'}</Text>
+                      {p.mrp && p.price && p.mrp > p.price ? (
+                        <Text style={styles.myntraMrp}>₹{p.mrp}</Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.myntraBtnRow}>
+                      <TouchableOpacity
+                        style={[styles.myntraTryBtn, busyItemId != null && styles.buttonDisabled]}
+                        onPress={() => runMyntraTryOn(p)}
+                        disabled={busyItemId != null}
+                        activeOpacity={0.85}
+                      >
+                        {busy ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.myntraTryBtnText}>👗 Try on</Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.myntraBuyBtn} onPress={() => openBuy(p)} activeOpacity={0.85}>
+                        <Text style={styles.myntraBuyBtnText}>🛒 Buy</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
         </View>
       )}
     </View>
@@ -1513,6 +1595,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   tryonAddChipText: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+
+  // Myntra "shop this look"
+  myntraSection: {
+    backgroundColor: COLORS.surface,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginTop: SPACING.md,
+  },
+  myntraRow: { gap: SPACING.md, paddingVertical: SPACING.sm, paddingRight: SPACING.md },
+  myntraCard: {
+    width: 170,
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  myntraImage: { width: '100%', height: 200, backgroundColor: COLORS.border },
+  myntraInfo: { padding: SPACING.sm },
+  myntraBrand: { fontSize: 13, fontWeight: '800', color: COLORS.textPrimary },
+  myntraName: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, minHeight: 32 },
+  myntraPriceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 6 },
+  myntraPrice: { fontSize: 15, fontWeight: '800', color: COLORS.primary },
+  myntraMrp: { fontSize: 12, color: COLORS.textMuted, textDecorationLine: 'line-through' },
+  myntraBtnRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm },
+  myntraTryBtn: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 34,
+  },
+  myntraTryBtnText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  myntraBuyBtn: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  myntraBuyBtnText: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
   tryonHint: { fontSize: 13, color: COLORS.textSecondary, marginBottom: SPACING.md, lineHeight: 18 },
   // Primary CTA: branded dark gradient + white text so it clearly reads as a button
   tryonPrimaryButton: { borderRadius: BORDER_RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },

@@ -1224,3 +1224,63 @@ async def generate_wardrobe_item_tryon(
         "provider": remote_result["provider"],
         "from_cache": False,
     }
+
+
+async def generate_external_tryon(
+    db: Session,
+    *,
+    current_user: User,
+    garment_image_url: str,
+    category: str,
+    garment_photo_type: str = "model",
+    base_image_path: Optional[str] = None,
+    trace_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Try on a garment from an external image URL (e.g. a Myntra product image).
+
+    Supports layering via base_image_path (a previous result of the same user).
+    Not cached — external catalogs change and results depend on the base image.
+    """
+    if category not in VALID_TRYON_CATEGORIES:
+        raise TryOnServiceError("category must be one of: tops, bottoms, one-pieces", status_code=400)
+    if not garment_image_url or not garment_image_url.startswith(("http://", "https://")):
+        raise TryOnServiceError("A valid garment image URL is required.", status_code=400)
+
+    selected_user_image = _get_selected_user_image(db, user_id=current_user.id, requested_user_image_id=None)
+    person_image_path = selected_user_image.image_path
+    if base_image_path:
+        person_image_path = _resolve_user_base_image_path(current_user, base_image_path)
+
+    normalized_photo_type = _normalize_garment_photo_type(garment_photo_type)
+    remote_tryon_client = get_remote_tryon_client()
+    if remote_tryon_client is None:
+        raise TryOnServiceError(
+            "Virtual try-on is not configured. External garment try-on requires the Runpod FASHN provider.",
+            status_code=503,
+        )
+
+    logger.info(
+        "[trace=%s] External try-on user_id=%s category=%s photo_type=%s layered=%s url=%s",
+        trace_id or "-", current_user.id, category, normalized_photo_type, bool(base_image_path), garment_image_url[:120],
+    )
+    remote_result = await remote_tryon_client.generate_tryon(
+        person_image_path=person_image_path,
+        garment_image_path=garment_image_url,
+        category=category,
+        garment_photo_type=normalized_photo_type,
+        trace_id=trace_id,
+    )
+    stored_image_path, public_image_path = await _save_tryon_image(
+        user=current_user,
+        image_bytes=remote_result["image_bytes"],
+        mime_type=remote_result["mime_type"],
+        filename_prefix="external_tryon",
+    )
+    return {
+        "image_path": public_image_path,
+        "stored_image_path": stored_image_path,
+        "category": category,
+        "garment_photo_type": normalized_photo_type,
+        "provider": remote_result["provider"],
+        "from_cache": False,
+    }

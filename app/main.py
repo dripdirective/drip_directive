@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from app.database import engine, Base, get_db
-from app.routers import auth, users, images, wardrobe, ai_processing, recommendations, leads
+from app.routers import auth, users, images, wardrobe, ai_processing, recommendations, leads, myntra
 from app.config import settings
 from app.core.vector_store import get_vector_store
 from app.middleware.validation import setup_validation
@@ -78,6 +78,17 @@ async def cors_debug_middleware(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def no_store_api_middleware(request: Request, call_next):
+    """Keep user-specific API responses out of browser and CDN caches."""
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 # Exception handler for validation errors to see what's failing
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -143,6 +154,7 @@ app.include_router(wardrobe.router, prefix="/api/wardrobe", tags=["Wardrobe"])
 app.include_router(ai_processing.router, prefix="/api/ai", tags=["AI Processing"])
 app.include_router(recommendations.router, prefix="/api/recommendations", tags=["Recommendations"])
 app.include_router(leads.router, prefix="/api/leads", tags=["Leads"])
+app.include_router(myntra.router, prefix="/api/myntra", tags=["Myntra"])
 
 
 @app.get("/")
@@ -186,4 +198,3 @@ async def health_check(db: Session = Depends(get_db)):
         health_status["storage"] = "unknown"
     
     return health_status
-

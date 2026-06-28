@@ -418,6 +418,21 @@ export const wardrobeAPI = {
   },
 };
 
+// Myntra catalog + try-on
+export const myntraAPI = {
+  getProducts: async (category = null, limit = 6) => {
+    const params = { limit };
+    if (category) params.category = category;
+    const response = await api.get('/api/myntra/products', { params });
+    return response.data;
+  },
+  // Try a Myntra product on the user; pass base_image_path to layer on a previous result.
+  tryOnProduct: async (productId, options = {}) => {
+    const response = await api.post(`/api/myntra/products/${productId}/tryon`, options);
+    return response.data;
+  },
+};
+
 // AI Processing API
 export const aiProcessingAPI = {
   processUserImages: async () => {
