@@ -28,6 +28,11 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 RUN git clone --depth 1 https://github.com/fashn-AI/fashn-vton-1.5.git ${FASHN_REPO_DIR} \
     && python -m pip install -e ${FASHN_REPO_DIR}
 
+# FASHN pulls in an onnxruntime-gpu wheel built for CUDA 13 (needs libcudart.so.13),
+# but this base image is CUDA 12.1 (libcudart.so.12). Pin onnxruntime-gpu to the
+# CUDA 12 / cuDNN 9 build so the dwpose import works against the bundled CUDA runtime.
+RUN python -m pip install --force-reinstall --no-deps "onnxruntime-gpu==1.20.1"
+
 # Bake the model weights into the image so workers never download at runtime.
 ARG HF_TOKEN=""
 RUN mkdir -p ${FASHN_WEIGHTS_DIR} \
