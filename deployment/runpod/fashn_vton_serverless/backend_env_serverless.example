@@ -1,0 +1,22 @@
+# Backend preset for the RunPod SERVERLESS try-on path.
+# Copy these into your backend .env (app/) and restart the API.
+
+VIRTUAL_TRYON_PROVIDER=runpod
+RUNPOD_API_BASE_URL=https://api.runpod.ai/v2
+RUNPOD_API_KEY=YOUR_RUNPOD_API_KEY          # rpa_...  (rotate the one you pasted in chat!)
+RUNPOD_TRYON_ENDPOINT_ID=YOUR_ENDPOINT_ID   # from the RunPod console after deploy
+
+# Timeouts: generous enough to absorb a serverless cold start (model load).
+RUNPOD_TRYON_HTTP_TIMEOUT_SECONDS=30
+RUNPOD_TRYON_POLL_INTERVAL_MS=2000
+RUNPOD_TRYON_TIMEOUT_SECONDS=600
+RUNPOD_TRYON_EXECUTION_TIMEOUT_SECONDS=300
+RUNPOD_TRYON_TTL_SECONDS=900
+
+# Inference tuning (same knobs as the pod path).
+RUNPOD_TRYON_MAX_IMAGE_DIMENSION=1024
+RUNPOD_TRYON_GARMENT_PHOTO_TYPE=flat-lay
+RUNPOD_TRYON_NUM_TIMESTEPS=30
+RUNPOD_TRYON_GUIDANCE_SCALE=1.5
+RUNPOD_TRYON_NUM_SAMPLES=1
+RUNPOD_TRYON_SEGMENTATION_FREE=true
