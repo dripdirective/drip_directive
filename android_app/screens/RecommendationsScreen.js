@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { recommendationsAPI, wardrobeAPI } from '../services/api';
+import { getApiErrorMessage, recommendationsAPI, wardrobeAPI } from '../services/api';
 import { API_BASE_URL } from '../config/api';
 import FlowNavBar from '../components/FlowNavBar';
 import LuxeBackground from '../components/luxe/LuxeBackground';
@@ -27,10 +27,11 @@ import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../theme/colors';
 
 // Cross-platform alert helper
 const showAlert = (title, message) => {
+  const safeMessage = typeof message === 'string' ? message : String(message || '');
   if (Platform.OS === 'web') {
-    window.alert(`${title}\n\n${message}`);
+    window.alert(`${title}\n\n${safeMessage}`);
   } else {
-    Alert.alert(title, message);
+    Alert.alert(title, safeMessage);
   }
 };
 
@@ -254,7 +255,6 @@ const MobileDrawer = ({
 
 // Outfit Display Component
 const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, recommendationId, onViewImage, showTryOnSection = false }) => {
-  const [showTryon, setShowTryon] = useState(false);
   const [showWhy, setShowWhy] = useState(true);
 
   const getWardrobeItem = (itemId) => {
@@ -402,37 +402,40 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
         </View>
       )}
 
-      {/* Try-On Section (hidden for now to save space) */}
+      {/* Virtual Try-On */}
       {showTryOnSection && (
         <View style={styles.tryonSection}>
           <Text style={styles.sectionLabel}>Virtual Try-On</Text>
 
-          {tryonImageUrl && (
+          {tryonImageUrl ? (
             <TouchableOpacity
               style={styles.tryonImageContainer}
               onPress={() => onViewImage?.(tryonImageUrl)}
+              activeOpacity={0.9}
             >
-              {showTryon ? (
-                <Image
-                  source={{ uri: tryonImageUrl }}
-                  style={styles.tryonImage}
-                  contentFit="contain"
-                  transition={200}
-                />
-              ) : (
-                <View style={styles.tryonPreview}>
-                  <Text style={styles.tryonPreviewIcon}>🖼️</Text>
-                  <Text style={styles.tryonPreviewText}>Tap to view try-on result</Text>
-                </View>
-              )}
+              <Image
+                source={{ uri: tryonImageUrl }}
+                style={styles.tryonImage}
+                contentFit="cover"
+                transition={200}
+              />
+              <View style={styles.tryonExpandBadge}>
+                <Text style={styles.tryonExpandBadgeText}>⛶  Tap to expand</Text>
+              </View>
             </TouchableOpacity>
+          ) : (
+            !loadingTryOn && (
+              <Text style={styles.tryonHint}>
+                See this outfit on you — generated from your photo.
+              </Text>
+            )
           )}
 
           <TouchableOpacity
             style={[styles.tryonButton, loadingTryOn && styles.buttonDisabled]}
             onPress={() => onTryOn && onTryOn(recommendationId, index)}
             disabled={loadingTryOn}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
             <LinearGradient
               colors={loadingTryOn ? [COLORS.surface, COLORS.surfaceLight] : COLORS.gradients.accent}
@@ -443,15 +446,21 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
               {loadingTryOn ? (
                 <View style={styles.loadingRow}>
                   <ActivityIndicator color={COLORS.textPrimary} size="small" />
-                  <Text style={styles.tryonButtonText}>  Generating...</Text>
+                  <Text style={styles.tryonButtonText}>  Generating your look…</Text>
                 </View>
               ) : (
                 <Text style={styles.tryonButtonText}>
-                  {tryonImageUrl ? '🔄 Regenerate Try-On' : '👗 Try This On Me'}
+                  {tryonImageUrl ? '🔄 Regenerate' : '👗 Try This On Me'}
                 </Text>
               )}
             </LinearGradient>
           </TouchableOpacity>
+
+          {loadingTryOn && (
+            <Text style={styles.tryonLoadingHint}>
+              This can take up to a minute the first time.
+            </Text>
+          )}
         </View>
       )}
     </View>
@@ -651,7 +660,7 @@ export default function RecommendationsScreen({ navigation }) {
     } catch (error) {
       setGenerating(false);
       setGeneratingStatus(null);
-      showAlert('Error', error.response?.data?.detail || 'Failed to generate');
+      showAlert('Error', getApiErrorMessage(error, 'Failed to generate'));
     }
   };
 
@@ -692,7 +701,7 @@ export default function RecommendationsScreen({ navigation }) {
         // showAlert('✨ Success', 'Your virtual try-on is ready!');
       }
     } catch (error) {
-      showAlert('Error', error.response?.data?.detail || 'Failed to generate try-on');
+      showAlert('Error', getApiErrorMessage(error, 'Failed to generate try-on'));
     } finally {
       setLoadingTryOn(false);
     }
@@ -945,7 +954,7 @@ export default function RecommendationsScreen({ navigation }) {
                       loadingTryOn={loadingTryOn}
                       recommendationId={selectedRec.id}
                       onViewImage={handleViewImage}
-                      showTryOnSection={false}
+                      showTryOnSection={true}
                     />
                   ) : (
                     <View style={styles.noOutfits}>
@@ -1416,23 +1425,23 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     marginTop: SPACING.md,
   },
-  tryonImageContainer: { marginBottom: SPACING.md },
-  tryonImage: { width: '100%', height: 400, borderRadius: BORDER_RADIUS.lg, backgroundColor: COLORS.surfaceLight },
-  tryonPreview: {
-    height: 120,
-    backgroundColor: COLORS.backgroundGlass,
+  tryonImageContainer: { marginBottom: SPACING.md, position: 'relative' },
+  tryonImage: { width: '100%', height: 420, borderRadius: BORDER_RADIUS.lg, backgroundColor: COLORS.surfaceLight },
+  tryonExpandBadge: {
+    position: 'absolute',
+    bottom: SPACING.sm,
+    right: SPACING.sm,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
     borderRadius: BORDER_RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    borderStyle: 'dashed',
   },
-  tryonPreviewIcon: { fontSize: 36, marginBottom: SPACING.sm },
-  tryonPreviewText: { fontSize: 14, color: COLORS.textMuted },
+  tryonExpandBadgeText: { fontSize: 12, fontWeight: '600', color: '#fff' },
+  tryonHint: { fontSize: 13, color: COLORS.textMuted, marginBottom: SPACING.md, lineHeight: 18 },
   tryonButton: { borderRadius: BORDER_RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },
   tryonButtonGradient: { paddingVertical: SPACING.lg, alignItems: 'center' },
   tryonButtonText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  tryonLoadingHint: { fontSize: 12, color: COLORS.textMuted, textAlign: 'center', marginTop: SPACING.sm },
   loadingRow: { flexDirection: 'row', alignItems: 'center' },
 
   // No Outfits
