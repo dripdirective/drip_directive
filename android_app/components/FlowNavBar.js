@@ -2,10 +2,18 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../theme/colors';
 
-// prev/next shape:
-// { route: "UserImages", label: "Photos", icon: "📸", enabled?: boolean }
+const routeIcons = {
+  Me: 'person-outline',
+  Profile: 'person-outline',
+  UserImages: 'image-outline',
+  Wardrobe: 'shirt-outline',
+  Recommendations: 'sparkles-outline',
+  VibeSync: 'color-palette-outline',
+};
+
 export default function FlowNavBar({ prev, next }) {
   const navigation = useNavigation();
 
@@ -16,6 +24,8 @@ export default function FlowNavBar({ prev, next }) {
 
   const prevEnabled = !!prev && prev.enabled !== false;
   const nextEnabled = !!next && next.enabled !== false;
+  const prevIcon = routeIcons[prev?.route] || 'chevron-back';
+  const nextIcon = routeIcons[next?.route] || 'chevron-forward';
 
   return (
     <View style={styles.wrap}>
@@ -27,7 +37,9 @@ export default function FlowNavBar({ prev, next }) {
             activeOpacity={0.85}
             disabled={!prevEnabled}
           >
-            <Text style={styles.ghostText}>← {prev.icon} {prev.label}</Text>
+            <Ionicons name="chevron-back" size={16} color={COLORS.textSecondary} />
+            <Ionicons name={prevIcon} size={16} color={COLORS.textSecondary} />
+            <Text style={styles.ghostText} numberOfLines={1}>{prev.label}</Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.spacer} />
@@ -41,12 +53,14 @@ export default function FlowNavBar({ prev, next }) {
             disabled={!nextEnabled}
           >
             <LinearGradient
-              colors={nextEnabled ? COLORS.gradients.accent : [COLORS.surfaceLight, COLORS.surface]}
+              colors={nextEnabled ? COLORS.gradients.primary : [COLORS.surfaceLight, COLORS.surface]}
               style={styles.primaryGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Text style={styles.primaryText}>{next.label} {next.icon} →</Text>
+              <Text style={styles.primaryText} numberOfLines={1}>{next.label}</Text>
+              <Ionicons name={nextIcon} size={16} color="#FFFAF4" />
+              <Ionicons name="chevron-forward" size={16} color="#FFFAF4" />
             </LinearGradient>
           </TouchableOpacity>
         ) : (
@@ -74,6 +88,8 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.45 },
   ghostButton: {
     flex: 1,
+    flexDirection: 'row',
+    gap: 6,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -84,6 +100,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ghostText: {
+    flexShrink: 1,
     color: COLORS.textSecondary,
     fontSize: 13,
     fontWeight: '700',
@@ -95,16 +112,18 @@ const styles = StyleSheet.create({
     ...SHADOWS.md,
   },
   primaryGradient: {
+    flexDirection: 'row',
+    gap: 6,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryText: {
-    color: COLORS.textPrimary,
+    flexShrink: 1,
+    color: '#FFFAF4',
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0.2,
   },
 });
-

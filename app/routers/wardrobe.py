@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Header
 from sqlalchemy.orm import Session, selectinload
 from typing import List
 from app.database import get_db
@@ -11,14 +13,30 @@ from app.core.wardrobe import (
     get_wardrobe_item_by_id,
     delete_wardrobe_item
 )
-from app.core.tryon import TryOnServiceError, generate_wardrobe_item_tryon
+from app.core.tryon import (
+    TryOnServiceError,
+    generate_wardrobe_item_tryon,
+    get_cached_wardrobe_item_tryon,
+)
 from app.core.storage import public_file_url
 from app.core.utils import validate_and_read_image
 
 router = APIRouter()
+logger = logging.getLogger("dripdirective.tryon")
 
 
-@router.post("/upload", response_model=WardrobeItemResponse, status_code=status.HTTP_201_CREATED)
+def _wardrobe_item_with_public_images(item: WardrobeItem) -> WardrobeItemWithImages:
+    item_data = WardrobeItemWithImages.model_validate(item)
+    img_models = []
+    for img in (item.images or []):
+        img_data = WardrobeImageResponse.model_validate(img)
+        img_data.image_path = public_file_url(img_data.image_path)
+        img_models.append(img_data)
+    item_data.images = img_models
+    return item_data
+
+
+@router.post("/upload", response_model=WardrobeItemWithImages, status_code=status.HTTP_201_CREATED)
 async def upload_wardrobe_image(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_active_user),
@@ -54,8 +72,19 @@ async def upload_wardrobe_image(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error
         )
-    
-    return wardrobe_item
+
+    wardrobe_item = (
+        db.query(WardrobeItem)
+        .options(selectinload(WardrobeItem.images))
+        .filter(WardrobeItem.id == wardrobe_item.id, WardrobeItem.user_id == current_user.id)
+        .first()
+    )
+    if not wardrobe_item:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Uploaded wardrobe item could not be loaded."
+        )
+    return _wardrobe_item_with_public_images(wardrobe_item)
 
 
 @router.get("/items", response_model=List[WardrobeItemWithImages])
@@ -73,14 +102,7 @@ async def get_items(
     )
     result = []
     for item in items:
-        item_data = WardrobeItemWithImages.model_validate(item)
-        img_models = []
-        for img in (item.images or []):
-            img_data = WardrobeImageResponse.model_validate(img)
-            img_data.image_path = public_file_url(img_data.image_path)
-            img_models.append(img_data)
-        item_data.images = img_models
-        result.append(item_data)
+        result.append(_wardrobe_item_with_public_images(item))
     return result
 
 
@@ -104,24 +126,50 @@ async def get_item(
             detail="Wardrobe item not found"
         )
     
-    item_data = WardrobeItemWithImages.model_validate(item)
-    img_models = []
-    for img in (item.images or []):
-        img_data = WardrobeImageResponse.model_validate(img)
-        img_data.image_path = public_file_url(img_data.image_path)
-        img_models.append(img_data)
-    item_data.images = img_models
-    return item_data
+    return _wardrobe_item_with_public_images(item)
+
+
+@router.get("/items/{item_id}/tryon", response_model=TryOnResponse | None)
+async def get_saved_wardrobe_tryon_image(
+    item_id: int,
+    user_image_id: int | None = None,
+    category: str | None = None,
+    garment_photo_type: str | None = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Return a previously generated try-on image for the same combination, if available."""
+    try:
+        return get_cached_wardrobe_item_tryon(
+            db,
+            current_user=current_user,
+            wardrobe_item_id=item_id,
+            user_image_id=user_image_id,
+            category=category,
+            garment_photo_type=garment_photo_type,
+        )
+    except TryOnServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
 
 @router.post("/items/{item_id}/tryon", response_model=TryOnResponse)
 async def generate_wardrobe_tryon_image(
     item_id: int,
     request: WardrobeTryOnRequest,
+    x_drip_trace_id: str | None = Header(default=None, alias="X-Drip-Trace-Id"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Generate a virtual try-on image for a specific wardrobe item."""
+    logger.info(
+        "[trace=%s] Wardrobe try-on route hit user_id=%s item_id=%s user_image_id=%s category=%s garment_photo_type=%s",
+        x_drip_trace_id or "-",
+        current_user.id,
+        item_id,
+        request.user_image_id,
+        request.category,
+        request.garment_photo_type,
+    )
     try:
         result = await generate_wardrobe_item_tryon(
             db,
@@ -130,10 +178,28 @@ async def generate_wardrobe_tryon_image(
             user_image_id=request.user_image_id,
             category=request.category,
             garment_photo_type=request.garment_photo_type,
+            base_image_path=request.base_image_path,
+            trace_id=x_drip_trace_id,
         )
     except TryOnServiceError as exc:
+        logger.warning(
+            "[trace=%s] Wardrobe try-on failed user_id=%s item_id=%s status=%s message=%s",
+            x_drip_trace_id or "-",
+            current_user.id,
+            item_id,
+            exc.status_code,
+            exc.message,
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
+    logger.info(
+        "[trace=%s] Wardrobe try-on completed user_id=%s item_id=%s from_cache=%s provider=%s",
+        x_drip_trace_id or "-",
+        current_user.id,
+        item_id,
+        result.get("from_cache"),
+        result.get("provider"),
+    )
     return {
         "image_path": result.get("image_path"),
         "outfit_index": result.get("outfit_index"),
@@ -142,6 +208,7 @@ async def generate_wardrobe_tryon_image(
         "category": result.get("category"),
         "garment_photo_type": result.get("garment_photo_type"),
         "provider": result.get("provider"),
+        "from_cache": result.get("from_cache"),
     }
 
 

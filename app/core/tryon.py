@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import io
 import json
+import logging
 import time
 import uuid
 from typing import Any, Optional
@@ -17,10 +19,11 @@ from sqlalchemy.orm import Session
 from app.ai_service import ai_service, compress_image, load_image_from_path_or_url
 from app.config import settings
 from app.core.storage import public_file_url, save_user_scoped_file
-from app.core.utils import parse_json_safe
+from app.core.utils import get_user_folder_name, parse_json_safe
 from app.models import (
     DressType,
     Recommendation,
+    TryOnRender,
     User,
     UserImage,
     UserProfile,
@@ -30,6 +33,7 @@ from app.models import (
 
 VALID_TRYON_CATEGORIES = {"tops", "bottoms", "one-pieces"}
 VALID_GARMENT_PHOTO_TYPES = {"model", "flat-lay"}
+logger = logging.getLogger("dripdirective.tryon")
 
 ONE_PIECE_TYPES = {
     DressType.DRESS,
@@ -356,6 +360,111 @@ def _decode_generated_image(image_base64: str) -> bytes:
         raise TryOnServiceError(f"Could not decode try-on image output: {exc}", status_code=502) from exc
 
 
+def _build_tryon_cache_key(
+    *,
+    user_id: int,
+    user_image_id: int,
+    wardrobe_item_id: int,
+    category: str,
+    garment_photo_type: str,
+) -> str:
+    payload = {
+        "cache_version": 1,
+        "provider": (settings.VIRTUAL_TRYON_PROVIDER or "").strip().lower(),
+        "user_id": int(user_id),
+        "user_image_id": int(user_image_id),
+        "wardrobe_item_id": int(wardrobe_item_id),
+        "category": category,
+        "garment_photo_type": garment_photo_type,
+        "max_image_dimension": int(settings.RUNPOD_TRYON_MAX_IMAGE_DIMENSION),
+        "num_timesteps": int(settings.RUNPOD_TRYON_NUM_TIMESTEPS),
+        "guidance_scale": float(settings.RUNPOD_TRYON_GUIDANCE_SCALE),
+        "num_samples": int(settings.RUNPOD_TRYON_NUM_SAMPLES),
+        "segmentation_free": bool(settings.RUNPOD_TRYON_SEGMENTATION_FREE),
+    }
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _cached_tryon_response(render: TryOnRender) -> dict[str, Any]:
+    return {
+        "image_path": public_file_url(render.image_path),
+        "stored_image_path": render.image_path,
+        "outfit_index": None,
+        "user_image_id": render.user_image_id,
+        "wardrobe_item_id": render.wardrobe_item_id,
+        "category": render.category,
+        "garment_photo_type": render.garment_photo_type,
+        "provider": render.provider,
+        "from_cache": True,
+    }
+
+
+def _get_cached_tryon_render(
+    db: Session,
+    *,
+    user_id: int,
+    user_image_id: int,
+    wardrobe_item_id: int,
+    category: str,
+    garment_photo_type: str,
+) -> Optional[TryOnRender]:
+    cache_key = _build_tryon_cache_key(
+        user_id=user_id,
+        user_image_id=user_image_id,
+        wardrobe_item_id=wardrobe_item_id,
+        category=category,
+        garment_photo_type=garment_photo_type,
+    )
+    return (
+        db.query(TryOnRender)
+        .filter(TryOnRender.user_id == user_id, TryOnRender.cache_key == cache_key)
+        .order_by(TryOnRender.id.desc())
+        .first()
+    )
+
+
+def _upsert_tryon_render(
+    db: Session,
+    *,
+    user_id: int,
+    user_image_id: int,
+    wardrobe_item_id: int,
+    category: str,
+    garment_photo_type: str,
+    image_path: str,
+    provider: Optional[str],
+) -> TryOnRender:
+    cache_key = _build_tryon_cache_key(
+        user_id=user_id,
+        user_image_id=user_image_id,
+        wardrobe_item_id=wardrobe_item_id,
+        category=category,
+        garment_photo_type=garment_photo_type,
+    )
+    render = (
+        db.query(TryOnRender)
+        .filter(TryOnRender.user_id == user_id, TryOnRender.cache_key == cache_key)
+        .first()
+    )
+    if render is None:
+        render = TryOnRender(
+            user_id=user_id,
+            user_image_id=user_image_id,
+            wardrobe_item_id=wardrobe_item_id,
+            cache_key=cache_key,
+        )
+        db.add(render)
+
+    render.category = category
+    render.garment_photo_type = garment_photo_type
+    render.provider = provider
+    render.image_path = image_path
+    db.commit()
+    db.refresh(render)
+    return render
+
+
 class RunpodTryOnClient:
     """Thin async client for a dedicated Runpod Serverless endpoint."""
 
@@ -367,11 +476,14 @@ class RunpodTryOnClient:
             and bool(settings.RUNPOD_TRYON_ENDPOINT_ID)
         )
 
-    def _headers(self) -> dict[str, str]:
-        return {
+    def _headers(self, trace_id: Optional[str] = None) -> dict[str, str]:
+        headers = {
             "Authorization": f"Bearer {settings.RUNPOD_API_KEY}",
             "Content-Type": "application/json",
         }
+        if trace_id:
+            headers["X-Drip-Trace-Id"] = trace_id
+        return headers
 
     def _endpoint_base(self) -> str:
         return f"{settings.RUNPOD_API_BASE_URL.rstrip('/')}/{settings.RUNPOD_TRYON_ENDPOINT_ID}"
@@ -443,6 +555,7 @@ class RunpodTryOnClient:
         garment_image_path: str,
         category: str,
         garment_photo_type: str,
+        trace_id: Optional[str] = None,
     ) -> dict[str, Any]:
         if not self.is_configured:
             raise TryOnServiceError(
@@ -515,10 +628,12 @@ class RunpodPodTryOnClient:
             and bool(settings.RUNPOD_POD_API_URL)
         )
 
-    def _headers(self) -> dict[str, str]:
+    def _headers(self, trace_id: Optional[str] = None) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if settings.RUNPOD_POD_API_TOKEN:
             headers["Authorization"] = f"Bearer {settings.RUNPOD_POD_API_TOKEN}"
+        if trace_id:
+            headers["X-Drip-Trace-Id"] = trace_id
         return headers
 
     def _endpoint_url(self) -> str:
@@ -531,6 +646,7 @@ class RunpodPodTryOnClient:
         garment_image_path: str,
         category: str,
         garment_photo_type: str,
+        trace_id: Optional[str] = None,
     ) -> dict[str, Any]:
         if not self.is_configured:
             raise TryOnServiceError(
@@ -564,14 +680,22 @@ class RunpodPodTryOnClient:
             "segmentation_free": settings.RUNPOD_TRYON_SEGMENTATION_FREE,
         }
 
+        logger.info(
+            "[trace=%s] Pod try-on request start category=%s garment_photo_type=%s endpoint=%s",
+            trace_id or "-",
+            category,
+            garment_photo_type,
+            self._endpoint_url(),
+        )
         try:
             async with httpx.AsyncClient(timeout=settings.RUNPOD_POD_HTTP_TIMEOUT_SECONDS) as client:
                 response = await client.post(
                     self._endpoint_url(),
-                    headers=self._headers(),
+                    headers=self._headers(trace_id),
                     json=payload,
                 )
         except httpx.HTTPError as exc:
+            logger.warning("[trace=%s] Pod try-on request error: %s", trace_id or "-", exc)
             raise TryOnServiceError(f"Runpod pod request failed: {exc}", status_code=502) from exc
 
         if response.status_code >= 400:
@@ -582,6 +706,12 @@ class RunpodPodTryOnClient:
                 payload = None
             if isinstance(payload, dict) and payload.get("detail"):
                 error_message = str(payload["detail"])[:500]
+            logger.warning(
+                "[trace=%s] Pod try-on request failed status=%s detail=%s",
+                trace_id or "-",
+                response.status_code,
+                error_message,
+            )
             raise TryOnServiceError(
                 f"Runpod pod request failed with {response.status_code}: {error_message}",
                 status_code=502,
@@ -602,6 +732,13 @@ class RunpodPodTryOnClient:
                 status_code=502,
             )
 
+        logger.info(
+            "[trace=%s] Pod try-on request completed provider=%s elapsed_seconds=%s",
+            trace_id or "-",
+            output.get("provider") or "runpod-pod/fashn-vton-1.5",
+            output.get("elapsed_seconds"),
+        )
+
         return {
             "image_bytes": _decode_generated_image(image_base64),
             "mime_type": output.get("mime_type") or "image/png",
@@ -619,6 +756,132 @@ def get_remote_tryon_client():
     if runpod_pod_tryon_client.is_configured:
         return runpod_pod_tryon_client
     return None
+
+
+def _persist_recommendation_tryon_metadata(
+    db: Session,
+    *,
+    recommendation: Recommendation,
+    metadata: dict[str, Any],
+    outfits: list[dict[str, Any]],
+    outfit_index: int,
+    stored_image_path: str,
+    selected_user_image: UserImage,
+    selected_item: WardrobeItem,
+    resolved_category: str,
+    normalized_photo_type: str,
+) -> None:
+    outfit = outfits[outfit_index]
+    outfit["tryon_image_path"] = stored_image_path
+    outfit["tryon_user_image_id"] = selected_user_image.id
+    outfit["tryon_wardrobe_item_id"] = selected_item.id
+    outfit["tryon_category"] = resolved_category
+    outfit["tryon_garment_photo_type"] = normalized_photo_type
+    metadata["recommended_outfits"] = outfits
+    recommendation.ai_metadata = json.dumps(metadata)
+    db.add(recommendation)
+    db.commit()
+
+
+def get_cached_recommendation_tryon(
+    db: Session,
+    *,
+    current_user: User,
+    recommendation: Recommendation,
+    outfit_index: int,
+    user_image_id: Optional[int] = None,
+    wardrobe_item_id: Optional[int] = None,
+    category: Optional[str] = None,
+    garment_photo_type: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    metadata = parse_json_safe(recommendation.ai_metadata)
+    outfits = metadata.get("recommended_outfits", [])
+
+    if outfit_index < 0 or outfit_index >= len(outfits):
+        raise TryOnServiceError("Invalid outfit index.", status_code=400)
+
+    selected_user_image = _get_selected_user_image(
+        db,
+        user_id=current_user.id,
+        requested_user_image_id=user_image_id,
+    )
+    selected_item, _, resolved_category = _select_recommendation_garment(
+        db,
+        user_id=current_user.id,
+        wardrobe_item_ids=outfits[outfit_index].get("wardrobe_item_ids", []),
+        requested_wardrobe_item_id=wardrobe_item_id,
+        requested_category=category,
+    )
+    normalized_photo_type = _normalize_garment_photo_type(garment_photo_type)
+
+    cached_render = _get_cached_tryon_render(
+        db,
+        user_id=current_user.id,
+        user_image_id=selected_user_image.id,
+        wardrobe_item_id=selected_item.id,
+        category=resolved_category,
+        garment_photo_type=normalized_photo_type,
+    )
+    if cached_render is None:
+        return None
+
+    _persist_recommendation_tryon_metadata(
+        db,
+        recommendation=recommendation,
+        metadata=metadata,
+        outfits=outfits,
+        outfit_index=outfit_index,
+        stored_image_path=cached_render.image_path,
+        selected_user_image=selected_user_image,
+        selected_item=selected_item,
+        resolved_category=resolved_category,
+        normalized_photo_type=normalized_photo_type,
+    )
+
+    cached_result = _cached_tryon_response(cached_render)
+    cached_result["outfit_index"] = outfit_index
+    return cached_result
+
+
+def get_cached_wardrobe_item_tryon(
+    db: Session,
+    *,
+    current_user: User,
+    wardrobe_item_id: int,
+    user_image_id: Optional[int] = None,
+    category: Optional[str] = None,
+    garment_photo_type: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    wardrobe_item = (
+        db.query(WardrobeItem)
+        .filter(WardrobeItem.id == wardrobe_item_id, WardrobeItem.user_id == current_user.id)
+        .first()
+    )
+    if not wardrobe_item:
+        raise TryOnServiceError("Wardrobe item not found.", status_code=404)
+
+    selected_user_image = _get_selected_user_image(
+        db,
+        user_id=current_user.id,
+        requested_user_image_id=user_image_id,
+    )
+    item_metadata = parse_json_safe(wardrobe_item.ai_metadata)
+    resolved_category = infer_tryon_category(
+        wardrobe_item,
+        item_metadata=item_metadata,
+        requested_category=category,
+    )
+    normalized_photo_type = _normalize_garment_photo_type(garment_photo_type)
+
+    cached_render = _get_cached_tryon_render(
+        db,
+        user_id=current_user.id,
+        user_image_id=selected_user_image.id,
+        wardrobe_item_id=wardrobe_item.id,
+        category=resolved_category,
+        garment_photo_type=normalized_photo_type,
+    )
+    return _cached_tryon_response(cached_render) if cached_render is not None else None
 
 
 async def _generate_legacy_recommendation_tryon(
@@ -672,6 +935,7 @@ async def generate_recommendation_tryon(
     wardrobe_item_id: Optional[int] = None,
     category: Optional[str] = None,
     garment_photo_type: Optional[str] = None,
+    trace_id: Optional[str] = None,
 ) -> dict[str, Any]:
     metadata = parse_json_safe(recommendation.ai_metadata)
     outfits = metadata.get("recommended_outfits", [])
@@ -687,22 +951,65 @@ async def generate_recommendation_tryon(
     )
 
     normalized_photo_type = _normalize_garment_photo_type(garment_photo_type)
-    remote_tryon_client = get_remote_tryon_client()
+    selected_item, selected_item_image, resolved_category = _select_recommendation_garment(
+        db,
+        user_id=current_user.id,
+        wardrobe_item_ids=outfit.get("wardrobe_item_ids", []),
+        requested_wardrobe_item_id=wardrobe_item_id,
+        requested_category=category,
+    )
 
-    if remote_tryon_client is not None:
-        selected_item, selected_item_image, resolved_category = _select_recommendation_garment(
-            db,
-            user_id=current_user.id,
-            wardrobe_item_ids=outfit.get("wardrobe_item_ids", []),
-            requested_wardrobe_item_id=wardrobe_item_id,
-            requested_category=category,
+    cached_render = _get_cached_tryon_render(
+        db,
+        user_id=current_user.id,
+        user_image_id=selected_user_image.id,
+        wardrobe_item_id=selected_item.id,
+        category=resolved_category,
+        garment_photo_type=normalized_photo_type,
+    )
+    if cached_render is not None:
+        logger.info(
+            "[trace=%s] Recommendation try-on cache hit user_id=%s recommendation_id=%s outfit_index=%s wardrobe_item_id=%s user_image_id=%s",
+            trace_id or "-",
+            current_user.id,
+            recommendation.id,
+            outfit_index,
+            selected_item.id,
+            selected_user_image.id,
         )
+        _persist_recommendation_tryon_metadata(
+            db,
+            recommendation=recommendation,
+            metadata=metadata,
+            outfits=outfits,
+            outfit_index=outfit_index,
+            stored_image_path=cached_render.image_path,
+            selected_user_image=selected_user_image,
+            selected_item=selected_item,
+            resolved_category=resolved_category,
+            normalized_photo_type=normalized_photo_type,
+        )
+        cached_result = _cached_tryon_response(cached_render)
+        cached_result["outfit_index"] = outfit_index
+        return cached_result
 
+    remote_tryon_client = get_remote_tryon_client()
+    if remote_tryon_client is not None:
+        logger.info(
+            "[trace=%s] Recommendation try-on cache miss user_id=%s recommendation_id=%s outfit_index=%s wardrobe_item_id=%s user_image_id=%s",
+            trace_id or "-",
+            current_user.id,
+            recommendation.id,
+            outfit_index,
+            selected_item.id,
+            selected_user_image.id,
+        )
         remote_result = await remote_tryon_client.generate_tryon(
             person_image_path=selected_user_image.image_path,
             garment_image_path=selected_item_image.image_path,
             category=resolved_category,
             garment_photo_type=normalized_photo_type,
+            trace_id=trace_id,
         )
         stored_image_path, public_image_path = await _save_tryon_image(
             user=current_user,
@@ -710,16 +1017,37 @@ async def generate_recommendation_tryon(
             mime_type=remote_result["mime_type"],
             filename_prefix=f"recommendation_{recommendation.id}_outfit_{outfit_index}",
         )
-
-        outfit["tryon_image_path"] = stored_image_path
-        outfit["tryon_user_image_id"] = selected_user_image.id
-        outfit["tryon_wardrobe_item_id"] = selected_item.id
-        outfit["tryon_category"] = resolved_category
-        outfit["tryon_garment_photo_type"] = normalized_photo_type
-        metadata["recommended_outfits"] = outfits
-        recommendation.ai_metadata = json.dumps(metadata)
-        db.add(recommendation)
-        db.commit()
+        _upsert_tryon_render(
+            db,
+            user_id=current_user.id,
+            user_image_id=selected_user_image.id,
+            wardrobe_item_id=selected_item.id,
+            category=resolved_category,
+            garment_photo_type=normalized_photo_type,
+            image_path=stored_image_path,
+            provider=remote_result["provider"],
+        )
+        _persist_recommendation_tryon_metadata(
+            db,
+            recommendation=recommendation,
+            metadata=metadata,
+            outfits=outfits,
+            outfit_index=outfit_index,
+            stored_image_path=stored_image_path,
+            selected_user_image=selected_user_image,
+            selected_item=selected_item,
+            resolved_category=resolved_category,
+            normalized_photo_type=normalized_photo_type,
+        )
+        logger.info(
+            "[trace=%s] Recommendation try-on saved user_id=%s recommendation_id=%s outfit_index=%s image_path=%s provider=%s",
+            trace_id or "-",
+            current_user.id,
+            recommendation.id,
+            outfit_index,
+            stored_image_path,
+            remote_result["provider"],
+        )
 
         return {
             "image_path": public_image_path,
@@ -730,6 +1058,7 @@ async def generate_recommendation_tryon(
             "category": resolved_category,
             "garment_photo_type": normalized_photo_type,
             "provider": remote_result["provider"],
+            "from_cache": False,
         }
 
     legacy_result = await _generate_legacy_recommendation_tryon(
@@ -752,6 +1081,25 @@ async def generate_recommendation_tryon(
     return legacy_result
 
 
+def _resolve_user_base_image_path(user: User, base_image_path: str) -> str:
+    """Validate that a layering base image belongs to this user's try-on results.
+
+    Accepts the stored relative path (or a full URL the client echoed back) and returns
+    the safe relative path to use as the person image. Rejects cross-user access and
+    path traversal.
+    """
+    raw = (base_image_path or "").strip()
+    if raw.startswith("http://") or raw.startswith("https://"):
+        from urllib.parse import urlparse
+
+        raw = urlparse(raw).path
+    normalized = raw.replace("\\", "/").lstrip("/")
+    expected_prefix = f"{settings.TRYON_IMAGES_DIR.rstrip('/')}/{get_user_folder_name(user.email)}/"
+    if ".." in normalized or not normalized.startswith(expected_prefix):
+        raise TryOnServiceError("Invalid base image for layering.", status_code=400)
+    return normalized
+
+
 async def generate_wardrobe_item_tryon(
     db: Session,
     *,
@@ -760,14 +1108,9 @@ async def generate_wardrobe_item_tryon(
     user_image_id: Optional[int] = None,
     category: Optional[str] = None,
     garment_photo_type: Optional[str] = None,
+    base_image_path: Optional[str] = None,
+    trace_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    remote_tryon_client = get_remote_tryon_client()
-    if remote_tryon_client is None:
-        raise TryOnServiceError(
-            "Virtual try-on is not configured. Direct garment try-on is only available with the Runpod FASHN provider.",
-            status_code=503,
-        )
-
     wardrobe_item = (
         db.query(WardrobeItem)
         .filter(WardrobeItem.id == wardrobe_item_id, WardrobeItem.user_id == current_user.id)
@@ -796,17 +1139,78 @@ async def generate_wardrobe_item_tryon(
     )
     normalized_photo_type = _normalize_garment_photo_type(garment_photo_type)
 
+    # Layering: wear this garment on top of a previous try-on result instead of the raw photo.
+    layered = bool(base_image_path)
+    person_image_path = selected_user_image.image_path
+    if layered:
+        person_image_path = _resolve_user_base_image_path(current_user, base_image_path)
+
+    cached_render = None if layered else _get_cached_tryon_render(
+        db,
+        user_id=current_user.id,
+        user_image_id=selected_user_image.id,
+        wardrobe_item_id=wardrobe_item.id,
+        category=resolved_category,
+        garment_photo_type=normalized_photo_type,
+    )
+    if cached_render is not None:
+        logger.info(
+            "[trace=%s] Wardrobe try-on cache hit user_id=%s wardrobe_item_id=%s user_image_id=%s",
+            trace_id or "-",
+            current_user.id,
+            wardrobe_item.id,
+            selected_user_image.id,
+        )
+        return _cached_tryon_response(cached_render)
+
+    remote_tryon_client = get_remote_tryon_client()
+    if remote_tryon_client is None:
+        raise TryOnServiceError(
+            "Virtual try-on is not configured. Direct garment try-on is only available with the Runpod FASHN provider.",
+            status_code=503,
+        )
+
+    logger.info(
+        "[trace=%s] Wardrobe try-on cache miss user_id=%s wardrobe_item_id=%s user_image_id=%s category=%s garment_photo_type=%s",
+        trace_id or "-",
+        current_user.id,
+        wardrobe_item.id,
+        selected_user_image.id,
+        resolved_category,
+        normalized_photo_type,
+    )
     remote_result = await remote_tryon_client.generate_tryon(
-        person_image_path=selected_user_image.image_path,
+        person_image_path=person_image_path,
         garment_image_path=selected_item_image.image_path,
         category=resolved_category,
         garment_photo_type=normalized_photo_type,
+        trace_id=trace_id,
     )
     stored_image_path, public_image_path = await _save_tryon_image(
         user=current_user,
         image_bytes=remote_result["image_bytes"],
         mime_type=remote_result["mime_type"],
         filename_prefix=f"wardrobe_{wardrobe_item.id}_tryon",
+    )
+    # Don't cache layered results: they depend on the base image, not just (user_image, item).
+    if not layered:
+        _upsert_tryon_render(
+            db,
+            user_id=current_user.id,
+            user_image_id=selected_user_image.id,
+            wardrobe_item_id=wardrobe_item.id,
+            category=resolved_category,
+            garment_photo_type=normalized_photo_type,
+            image_path=stored_image_path,
+            provider=remote_result["provider"],
+        )
+    logger.info(
+        "[trace=%s] Wardrobe try-on saved user_id=%s wardrobe_item_id=%s image_path=%s provider=%s",
+        trace_id or "-",
+        current_user.id,
+        wardrobe_item.id,
+        stored_image_path,
+        remote_result["provider"],
     )
 
     return {
@@ -818,4 +1222,5 @@ async def generate_wardrobe_item_tryon(
         "category": resolved_category,
         "garment_photo_type": normalized_photo_type,
         "provider": remote_result["provider"],
+        "from_cache": False,
     }

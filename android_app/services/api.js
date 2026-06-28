@@ -16,6 +16,43 @@ const isProbablyFormData = (data) => {
   return typeof data.append === 'function' && typeof data.getParts === 'function';
 };
 
+const stringifyDetailItem = (item) => {
+  if (!item) return '';
+  if (typeof item === 'string') return item;
+  if (typeof item === 'object') {
+    const location = Array.isArray(item.loc)
+      ? item.loc.filter((part) => part !== 'body').join('.')
+      : '';
+    const message = item.msg || item.message || item.detail;
+    if (message) {
+      return location ? `${location}: ${message}` : String(message);
+    }
+    try {
+      return JSON.stringify(item);
+    } catch {
+      return String(item);
+    }
+  }
+  return String(item);
+};
+
+export const getApiErrorMessage = (error, fallback = 'Something went wrong') => {
+  const detail = error?.response?.data?.detail;
+  if (Array.isArray(detail)) {
+    return detail.map(stringifyDetailItem).filter(Boolean).join('\n') || fallback;
+  }
+  if (detail && typeof detail === 'object') {
+    return stringifyDetailItem(detail) || fallback;
+  }
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail;
+  }
+  if (typeof error?.message === 'string' && error.message.trim()) {
+    return error.message;
+  }
+  return fallback;
+};
+
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -369,6 +406,16 @@ export const wardrobeAPI = {
   deleteItem: async (itemId) => {
     await api.delete(`${API_ENDPOINTS.DELETE_WARDROBE_ITEM}/${itemId}`);
   },
+
+  // Virtual try-on for a single wardrobe item (top OR bottom, your choice).
+  // Category is auto-inferred from the item on the backend; body can be empty.
+  generateItemTryOn: async (itemId, options = {}) => {
+    const response = await api.post(
+      `${API_ENDPOINTS.GET_WARDROBE_ITEM}/${itemId}/tryon`,
+      options
+    );
+    return response.data;
+  },
 };
 
 // AI Processing API
@@ -458,4 +505,3 @@ export const recommendationsAPI = {
 };
 
 export default api;
-

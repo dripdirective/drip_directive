@@ -159,6 +159,9 @@ class TryOnOptionsBase(BaseModel):
     user_image_id: Optional[int] = None
     category: Optional[str] = None
     garment_photo_type: Optional[str] = None
+    # Optional base image for layering: a previous try-on result (stored path) belonging
+    # to the same user, to wear the next garment on top of instead of the raw user photo.
+    base_image_path: Optional[str] = None
 
     @field_validator("category")
     @classmethod
@@ -210,6 +213,7 @@ class TryOnResponse(BaseModel):
     category: Optional[str] = None
     garment_photo_type: Optional[str] = None
     provider: Optional[str] = None
+    from_cache: Optional[bool] = None
 
 
 class OutfitItem(BaseModel):

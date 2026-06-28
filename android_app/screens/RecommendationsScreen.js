@@ -256,6 +256,35 @@ const MobileDrawer = ({
 // Outfit Display Component
 const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, recommendationId, onViewImage, showTryOnSection = false }) => {
   const [showWhy, setShowWhy] = useState(true);
+  // Virtual try-on with layering. `look` is the current composed result the user is
+  // building; `path` is its stored path used as the base for the next garment.
+  const [look, setLook] = useState(null);   // { url, path, itemIds: [id, ...] }
+  const [busyItemId, setBusyItemId] = useState(null);
+  const [tryonError, setTryonError] = useState(null);
+
+  // layer=false → wear on the raw user photo; layer=true → wear on top of the current look.
+  const runTryOn = async (itemId, { layer }) => {
+    setTryonError(null);
+    setBusyItemId(itemId);
+    try {
+      const options = layer && look?.path ? { base_image_path: look.path } : {};
+      const res = await wardrobeAPI.generateItemTryOn(itemId, options);
+      const path = res?.image_path;
+      if (!path) {
+        setTryonError('Could not generate the try-on. Please try again.');
+        return;
+      }
+      const url = path.startsWith('http') ? path : `${API_BASE_URL}/${path}`;
+      setLook((prev) => {
+        const baseItems = layer && prev ? prev.itemIds.filter((id) => id !== itemId) : [];
+        return { url, path, itemIds: [...baseItems, itemId] };
+      });
+    } catch (e) {
+      setTryonError(getApiErrorMessage(e, 'Failed to generate try-on'));
+    } finally {
+      setBusyItemId(null);
+    }
+  };
 
   const getWardrobeItem = (itemId) => {
     return wardrobeItems.find(w => w.id === itemId);
@@ -356,8 +385,24 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
                 {wardrobeItem?.color && (
                   <Text style={styles.outfitItemTip} numberOfLines={1}>🎨 {wardrobeItem.color}</Text>
                 )}
-                {imageUrl && (
-                  <Text style={styles.outfitItemTapHint} numberOfLines={1}>Tap image to view</Text>
+
+                {showTryOnSection && (
+                  <TouchableOpacity
+                    style={[
+                      styles.itemTryonBtn,
+                      look?.itemIds?.includes(itemId) && styles.itemTryonBtnActive,
+                      busyItemId === itemId && styles.buttonDisabled,
+                    ]}
+                    onPress={() => runTryOn(itemId, { layer: false })}
+                    disabled={busyItemId != null}
+                    activeOpacity={0.85}
+                  >
+                    {busyItemId === itemId ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.itemTryonBtnText}>👗 Try on</Text>
+                    )}
+                  </TouchableOpacity>
                 )}
               </View>
             </View>
@@ -402,63 +447,68 @@ const OutfitDisplay = ({ outfit, index, wardrobeItems, onTryOn, loadingTryOn, re
         </View>
       )}
 
-      {/* Virtual Try-On */}
+      {/* Virtual Try-On — build a full look by trying items and layering more on top */}
       {showTryOnSection && (
         <View style={styles.tryonSection}>
           <Text style={styles.sectionLabel}>Virtual Try-On</Text>
 
-          {tryonImageUrl ? (
-            <TouchableOpacity
-              style={styles.tryonImageContainer}
-              onPress={() => onViewImage?.(tryonImageUrl)}
-              activeOpacity={0.9}
-            >
-              <Image
-                source={{ uri: tryonImageUrl }}
-                style={styles.tryonImage}
-                contentFit="cover"
-                transition={200}
-              />
-              <View style={styles.tryonExpandBadge}>
-                <Text style={styles.tryonExpandBadgeText}>⛶  Tap to expand</Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            !loadingTryOn && (
-              <Text style={styles.tryonHint}>
-                See this outfit on you — generated from your photo.
+          {busyItemId != null ? (
+            <View style={styles.tryonLoadingBox}>
+              <ActivityIndicator color={COLORS.primary} size="large" />
+              <Text style={styles.tryonLoadingTitle}>
+                {look ? `Adding ${getItemName(busyItemId)} to your look…` : `Trying on ${getItemName(busyItemId)}…`}
               </Text>
-            )
-          )}
-
-          <TouchableOpacity
-            style={[styles.tryonButton, loadingTryOn && styles.buttonDisabled]}
-            onPress={() => onTryOn && onTryOn(recommendationId, index)}
-            disabled={loadingTryOn}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={loadingTryOn ? [COLORS.surface, COLORS.surfaceLight] : COLORS.gradients.accent}
-              style={styles.tryonButtonGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              {loadingTryOn ? (
-                <View style={styles.loadingRow}>
-                  <ActivityIndicator color={COLORS.textPrimary} size="small" />
-                  <Text style={styles.tryonButtonText}>  Generating your look…</Text>
+              <Text style={styles.tryonLoadingHint}>This can take up to a minute the first time.</Text>
+            </View>
+          ) : look ? (
+            <>
+              <Text style={styles.tryonWearingLabel}>
+                Wearing: {look.itemIds.map((id) => getItemName(id)).join(' + ')}
+              </Text>
+              <TouchableOpacity
+                style={styles.tryonImageContainer}
+                onPress={() => onViewImage?.(look.url)}
+                activeOpacity={0.9}
+              >
+                <Image
+                  source={{ uri: look.url }}
+                  style={styles.tryonImage}
+                  contentFit="cover"
+                  transition={200}
+                />
+                <View style={styles.tryonExpandBadge}>
+                  <Text style={styles.tryonExpandBadgeText}>⛶  Tap to expand</Text>
                 </View>
-              ) : (
-                <Text style={styles.tryonButtonText}>
-                  {tryonImageUrl ? '🔄 Regenerate' : '👗 Try This On Me'}
-                </Text>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
+              </TouchableOpacity>
 
-          {loadingTryOn && (
-            <Text style={styles.tryonLoadingHint}>
-              This can take up to a minute the first time.
+              {/* Layer the remaining items onto the current look */}
+              {itemIds.filter((id) => !look.itemIds.includes(id)).length > 0 && (
+                <>
+                  <Text style={styles.tryonAddLabel}>Add another item to this look:</Text>
+                  <View style={styles.tryonAddRow}>
+                    {itemIds
+                      .filter((id) => !look.itemIds.includes(id))
+                      .map((id) => (
+                        <TouchableOpacity
+                          key={id}
+                          style={styles.tryonAddChip}
+                          onPress={() => runTryOn(id, { layer: true })}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.tryonAddChipText}>➕ {getItemName(id)}</Text>
+                        </TouchableOpacity>
+                      ))}
+                  </View>
+                </>
+              )}
+
+              {tryonError ? <Text style={styles.tryonErrorText}>{tryonError}</Text> : null}
+            </>
+          ) : tryonError ? (
+            <Text style={styles.tryonErrorText}>{tryonError}</Text>
+          ) : (
+            <Text style={styles.tryonHint}>
+              Tap “👗 Try on” on any item above to wear it on your photo. Then add more pieces to build the full look — your choice, top or bottom first.
             </Text>
           )}
         </View>
@@ -947,6 +997,7 @@ export default function RecommendationsScreen({ navigation }) {
                   {/* Outfit Content (no nested ScrollView) */}
                   {selectedRec.outfits && selectedRec.outfits.length > 0 ? (
                     <OutfitDisplay
+                      key={`${selectedRec.id}-${selectedOutfitIndex}`}
                       outfit={selectedRec.outfits[selectedOutfitIndex]}
                       index={selectedOutfitIndex}
                       wardrobeItems={wardrobeItems}
@@ -1359,6 +1410,18 @@ const styles = StyleSheet.create({
   outfitItemName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4 },
   outfitItemTip: { fontSize: 12, color: COLORS.textMuted },
   outfitItemTapHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 4 },
+  itemTryonBtn: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 34,
+  },
+  itemTryonBtnActive: { backgroundColor: COLORS.accentDark },
+  itemTryonBtnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 
   // Image preview modal
   imagePreviewContainer: {
@@ -1437,11 +1500,38 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
   },
   tryonExpandBadgeText: { fontSize: 12, fontWeight: '600', color: '#fff' },
-  tryonHint: { fontSize: 13, color: COLORS.textMuted, marginBottom: SPACING.md, lineHeight: 18 },
-  tryonButton: { borderRadius: BORDER_RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },
+  tryonWearingLabel: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: SPACING.sm },
+  tryonErrorText: { fontSize: 13, color: COLORS.error || '#C0392B', paddingVertical: SPACING.md },
+  tryonAddLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary, marginTop: SPACING.md, marginBottom: SPACING.sm },
+  tryonAddRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  tryonAddChip: {
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  tryonAddChipText: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+  tryonHint: { fontSize: 13, color: COLORS.textSecondary, marginBottom: SPACING.md, lineHeight: 18 },
+  // Primary CTA: branded dark gradient + white text so it clearly reads as a button
+  tryonPrimaryButton: { borderRadius: BORDER_RADIUS.lg, overflow: 'hidden', ...SHADOWS.md },
   tryonButtonGradient: { paddingVertical: SPACING.lg, alignItems: 'center' },
-  tryonButtonText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
-  tryonLoadingHint: { fontSize: 12, color: COLORS.textMuted, textAlign: 'center', marginTop: SPACING.sm },
+  tryonPrimaryText: { fontSize: 16, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.3 },
+  // Secondary CTA: outlined, visually subordinate to the primary
+  tryonRegenButton: {
+    marginTop: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.surface,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  tryonRegenText: { fontSize: 14, fontWeight: '700', color: COLORS.primary },
+  tryonLoadingBox: { alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm },
+  tryonLoadingTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+  tryonLoadingHint: { fontSize: 12, color: COLORS.textMuted, textAlign: 'center' },
   loadingRow: { flexDirection: 'row', alignItems: 'center' },
 
   // No Outfits
